@@ -1,0 +1,6 @@
+v5: 02/04/2006 - Z80 Emu: Fixed SBCW bug that affected portamento
+                 UI: Added timer (M:S:F) & control over enable & volume
+v4: 18/03/2006 - Disable Timer1 at INIT entrypoint
+v3: 04/03/2006 - Use Skyfox's routine to update AY regs
+v2: 21/02/2006 - Spectrum stereo (L=A+B/2, R=C'+B'/2)
+v1: 13/02/2006 - Dual mono (L=A+B+C, R=A'+B'+C')

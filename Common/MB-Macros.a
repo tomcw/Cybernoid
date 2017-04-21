@@ -1,0 +1,440 @@
+
+SPECTRUM128_STEREO = 1	; L = A+Bx0.5, R = C'+B'x0.5
+DUAL_MONO = 0			; L = A+B+C, R=A'+B'+C'
+
+
+!macro MB_Init1 .RegSongNum {
+; Pre:	A = Song# [0..NUM_SONGS-1]
+; Post:	.RegSongNum = Song#
+;
+
+	jmp		.skip_data
+
+nSongNum:	!byte 0		; Song#
+nFrameNum:	!byte 0,0,0	; Minute:Second:FrameNum (@ 50Hz)
+;
+nMaskA:		!byte 0		; Voice-A mask (0=enable)
+nMaskB:		!byte 0		; Voice-B mask (0=enable)
+nMaskC:		!byte 0		; Voice-C mask (0=enable)
+;
+nAttA:		!byte 0		; Attenuation of Voice-A
+nAttB:		!byte 1		; Attenuation of Voice-B : B Volume / 2 (logarithmic, so: if (A) A--)
+nAttC:		!byte 0		; Attenuation of Voice-C
+;
+pAYRegValues:	!word AYRegValues	; For VU-meter
+
+	;
+
+.skip_data:
+	lda		nSongNum
+	cmp		#NUM_SONGS
+	bcc		SongNumOK
+		lda		#255	; Uninit
+		sta		nSongNum
+SongNumOK:
+
+	;
+
+	lda		nMBBaseHi
+	beq		FindMB
+		
+		; Need to disable Timer1 IRQ before:
+		; . Scanning for MB card
+		; . Saving ZPBlock
+
+		lda		#1<<6
+MB0:	sta		CARD_BASE+SY6522_IER	; Disable Timer1 IRQ
+
+FindMB:
+
+	;----------------------------------
+
+	+SaveRegs		ZPBlock
+
+	jsr		SF_GetMBSlot
+	bne		GotMBSlot
+
+		; MB not found!
+		jmp	InitExit2
+
+GotMBSlot:
+	; Setup correct address in IRQ handler code:
+
+!if SPECTRUM128_STEREO {
+	stx		MBx1+2
+	stx		MBx2+2
+	stx		MBx3+2
+	stx		MBx4+2
+}
+
+!if DUAL_MONO {
+	stx		MB1+2
+	stx		MB1b+2
+	stx		MB2+2
+	stx		MB2b+2
+	stx		MB3+2
+	stx		MB3b+2
+	stx		MB4+2
+	stx		MB4b+2
+	stx		MB5+2
+	stx		MB5b+2
+	stx		MB6+2
+	stx		MB6b+2
+}
+
+	stx		MB0+2
+	stx		MB7+2
+
+	stx		nMBBaseHi
+
+	;
+
+	lda		#$07
+	ldy		#SY6522_DDRB
+	sta		(MBBase),y
+	ldy		#SY6522_DDRB+$80
+	sta		(MBBase),y
+
+	lda		#$ff
+	ldy		#SY6522_DDRA
+	sta		(MBBase),y
+	ldy		#SY6522_DDRA+$80
+	sta		(MBBase),y
+
+	lda		#AY_RESET
+	ldy		#SY6522_ORB
+	sta		(MBBase),y
+	ldy		#SY6522_ORB+$80
+	sta		(MBBase),y
+
+	ldx		nSongNum
+	cpx		#255
+	bne		NotFini
+ 
+ 		jmp		InitExit
+
+NotFini:
+	lda		SongTbl,x
+	sta		.RegSongNum
+}
+
+;--------------------------------------
+
+!macro MB_Init2 {
+	lda		#0
+	sta		nFrameNum+0
+	sta		nFrameNum+1
+	sta		nFrameNum+2
+
+	; Setup Timer1 IRQ to trigger at 50Hz
+	; Apple CLK = 1.022727 MHz, so set Timer1=0x4fe7
+
+	sei
+
+	lda		#$e7
+	ldy		#SY6522_TIMER1L_COUNTER
+	sta		(MBBase),y
+	lda		#$4f
+	ldy		#SY6522_TIMER1H_COUNTER
+	sta		(MBBase),y
+
+	lda		#1<<6
+	ldy		#SY6522_ACR
+	sta		(MBBase),y				; Free running timer
+
+	lda		#1<<7 | 1<<6
+	ldy		#SY6522_IER	
+	sta		(MBBase),y				; Enable Timer1 IRQ
+
+	lda		#<Interrupt				; ADDR_L
+	sta		IRQL
+	lda		#>Interrupt				; ADDR_H 
+	sta		IRQH
+
+InitExit:
+	cli
+
+	+SaveRegs		Z80Block
+
+InitExit2:
+	+RestoreRegs	ZPBlock
+}
+
+;--------------------------------------
+
+!macro SF_UpdateAY {
+
+; Skyfox's routine to update AY regs:
+
+SF_SelectReg:
+MBx1:	sta		CARD_BASE+SY6522_ORA,x
+		lda		#AY_LATCH
+		bne		.l675e
+
+SF_WriteReg:
+MBx2:	sta		CARD_BASE+SY6522_ORA,x
+		lda		#AY_WRITE
+		bne		.l675e
+
+SF_ChipReset:
+		lda		#AY_RESET
+
+.l675e:
+MBx3:	sta		CARD_BASE+SY6522_ORB,x
+		lda		#AY_INACTIVE
+MBx4:	sta		CARD_BASE+SY6522_ORB,x
+		rts
+}
+
+;--------------------------------------
+
+!if SPECTRUM128_STEREO {
+; L = A+Bx0.5, R = C'+B'x0.5
+;
+
+!macro MB_WriteAYRegs .ay_regs_base	{
+	; Enable SLOTXROM while accessing MB regs
+	lda		SW_SLOTXROM_R
+	pha
+	bpl		.ay_init	; branch if b7=0 (enabled)
+	sta		SW_SLOTXROM_ENA
+
+.ay_init:
+	ldy		#$0D
+
+.ay_loop:
+		lda		.ay_regs_base,y
+
+		cpy		#AY_ENABLE
+		bne		.ay_cont
+
+			tax		; Save AY_ENABLE
+			ora		#AY_DIS_C
+			sta		.ay0_regs,y
+
+			txa		; Restore AY_ENABLE
+			ora		#AY_DIS_A
+			sta		.ay1_regs,y
+
+			dey
+			bpl		.ay_loop	; branch always taken
+
+		;
+
+.ay_cont:
+		sta		.ay0_regs,y
+		sta		.ay1_regs,y
+		dey
+		bpl		.ay_loop
+
+	;
+
+	; Post processing
+AYPostProc:
+	lda		#0
+	sta		.ay1_regs+AY_AVOL
+	sta		.ay0_regs+AY_CVOL
+
+	;
+	; Attenuate AVOL
+
+	lda		.ay_regs_base+AY_AVOL
+	sec
+	sbc		nAttA
+	bpl		.ay_set_a_vol
+		lda		#0
+.ay_set_a_vol
+	sta		.ay0_regs+AY_AVOL
+
+	;
+	; Attenuate BVOL
+
+	lda		.ay_regs_base+AY_BVOL
+	sec
+	sbc		nAttB
+	bpl		.ay_set_b_vol
+		lda		#0
+.ay_set_b_vol
+	sta		.ay0_regs+AY_BVOL
+	sta		.ay1_regs+AY_BVOL
+
+	;
+	; Attenuate CVOL
+
+	lda		.ay_regs_base+AY_CVOL
+	sec
+	sbc		nAttC
+	bpl		.ay_set_c_vol
+		lda		#0
+.ay_set_c_vol
+	sta		.ay1_regs+AY_CVOL
+
+	;
+	; User disable A/B/C
+
+.ay_chk_maska:
+	lda		nMaskA
+	beq		.ay_chk_maskb
+		lda		#0
+		sta		.ay0_regs+AY_AVOL
+
+		lda		.ay0_regs+AY_ENABLE
+		ora		#AY_DIS_A
+		sta		.ay0_regs+AY_ENABLE
+
+.ay_chk_maskb:
+	lda		nMaskB
+	beq		.ay_chk_maskc
+		lda		#0
+		sta		.ay0_regs+AY_BVOL
+		sta		.ay1_regs+AY_BVOL
+
+		lda		.ay0_regs+AY_ENABLE
+		ora		#AY_DIS_B
+		sta		.ay0_regs+AY_ENABLE
+
+		lda		.ay1_regs+AY_ENABLE
+		ora		#AY_DIS_B
+		sta		.ay1_regs+AY_ENABLE
+
+.ay_chk_maskc:
+	lda		nMaskC
+	beq		.ay_chk_mask_done
+		lda		#0
+		sta		.ay1_regs+AY_CVOL
+
+		lda		.ay1_regs+AY_ENABLE
+		ora		#AY_DIS_C
+		sta		.ay1_regs+AY_ENABLE
+
+.ay_chk_mask_done:
+
+	;
+
+	ldx		#0
+	ldy		#$0D
+.sf_loop0:	tya
+			jsr		SF_SelectReg
+			lda		.ay0_regs,y
+			jsr		SF_WriteReg
+			dey
+			bpl		.sf_loop0
+
+	;
+
+	ldx		#$80
+	ldy		#$0D
+.sf_loop1:	tya
+			jsr		SF_SelectReg
+			lda		.ay1_regs,y
+			jsr		SF_WriteReg
+			dey
+			bpl		.sf_loop1
+
+	; Disable SLOTXROM if necessary
+	pla
+	bpl		.ay_done		; branch if b7=0 (enabled)
+	sta		SW_SLOTXROM_DIS
+	bmi		.ay_done		; branch always taken
+
+	;--------------
+
+.ay0_regs:	!fill 14,0
+.ay1_regs:	!fill 14,0
+
+	+SF_UpdateAY
+
+	;--------------
+
+.ay_done:
+
+}
+} ; !if SPECTRUM128_STEREO
+
+;------------------
+
+!if DUAL_MONO {
+; L = A+B+C, R=A'+B'+C'
+;
+
+!macro MB_WriteAYRegs .ay_regs_base {
+	; Enable SLOTXROM while accessing MB regs
+	lda		SW_SLOTXROM_R
+	pha
+	bpl		.ay_init	; branch if b7=0 (enabled)
+	sta		SW_SLOTXROM_ENA
+
+.ay_init:
+	ldy		#$0D
+	lda		#<.ay_regs_base
+	sta		TmpL
+	lda		#>.ay_regs_base
+	sta		TmpH
+
+.ay_loop:
+		; Select AY reg
+MB1:	sty		CARD_BASE+SY6522_ORA
+MB1b:	sty		CARD_BASE+SY6522_ORA+$80
+		lda		#$07			; LATCH
+MB2:  	sta		CARD_BASE+SY6522_ORB
+MB2b:  	sta		CARD_BASE+SY6522_ORB+$80
+		lda		#$04			; INACTIVE
+MB3:  	sta		CARD_BASE+SY6522_ORB
+MB3b:  	sta		CARD_BASE+SY6522_ORB+$80
+
+		; Write AY reg
+		lda		(TmpL),y
+MB4:  	sta		CARD_BASE+SY6522_ORA
+MB4b:  	sta		CARD_BASE+SY6522_ORA+$80
+		lda		#$06			; WRITE
+MB5:  	sta		CARD_BASE+SY6522_ORB
+MB5b:  	sta		CARD_BASE+SY6522_ORB+$80
+		lda		#$04			; INACTIVE
+MB6:  	sta		CARD_BASE+SY6522_ORB
+MB6b:  	sta		CARD_BASE+SY6522_ORB+$80
+
+		dey
+		bpl		.ay_loop
+
+	; Disable SLOTXROM if necessary
+	pla
+	bpl		.ay_done		; branch if b7=0 (enabled)
+	sta		SW_SLOTXROM_DIS
+
+.ay_done:
+}
+} ; !if DUAL_MONO
+
+;--------------------------------------
+
+!macro MB_ISR .isr_main {
+; Pre:
+;	6502 has pushed P
+;	Apple ROM has stored A to $45 (not Apple //e ROM!)
+;
+
+	txa 
+	pha
+	tya
+	pha
+
+	+SaveRegs		ZPBlock
+	+RestoreRegs	Z80Block
+
+	jsr		.isr_main
+	
+	+SaveRegs		Z80Block
+	+RestoreRegs	ZPBlock
+
+	lda		#1<<6
+MB7:
+	sta		CARD_BASE+SY6522_IFR	; Clear Timer1 IRQ flag
+
+	pla
+	tay
+	pla
+	tax
+
+	lda		$45
+	rti
+}

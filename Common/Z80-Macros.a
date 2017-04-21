@@ -1,0 +1,260 @@
+; 6502 -> Z80 macros
+;
+
+; C flag differences:
+;
+;       A=1,     A=2,     A=3,
+;       CMP #2:  CMP #2:  CMP #2:
+;       SCZ      SCZ      SCZ
+; 6502: 100      011      010
+;  Z80: 110      001      000
+;
+; So 6502_C = !(Z80_C)
+;
+
+; ld c,a
+!macro LD .dst, .reg {
+	lda		.reg
+	sta		.dst
+}
+
+; ld c,80h
+!macro LD_REG_IMM .dst, .src {
+	lda		#.src
+	sta		.dst
+}
+
+; ld ix,lf214
+; ld hl,0008h
+!macro LDW .dst, .const {
+	lda		#<.const	; LSB
+	sta		.dst
+	lda		#>.const	; MSB
+	sta		.dst + 1
+}
+
+; ld a,(hl)
+!macro LD_REG_INDIRECT .dst, .reg16 {
+	ldx		#0
+	lda		(.reg16,x)
+	sta		.dst
+}
+
+; ld (0f1fch),a
+!macro LD_INDIRECT_ABS .dst, .reg {
+	lda		.reg
+	sta		.dst
+}
+
+; ld a,(0f1fdh)
+!macro LD_REG_INDIRECT_ABS .reg, .dst {
+	lda		.dst
+	sta		.reg
+}
+
+; ld (ix+19h),a
+!macro LD_INDIRECT_OFFSET .reg16, .offset, .src {
+	ldy		#.offset
+	lda		.src
+	sta		(.reg16),y
+}
+
+; ld (ix+19h),01h
+!macro LD_INDIRECT_OFFSET_IMM .reg16, .offset, .src {
+	ldy		#.offset
+	lda		#.src
+	sta		(.reg16),y
+}
+
+; ld h,(ix+15h)
+!macro LD_REG_INDIRECT_OFFSET .dst, .reg16, .offset {
+	ldy		#.offset
+	lda		(.reg16),y
+	sta		.dst
+}
+
+; ld (hl),a
+!macro LD_INDIRECT .reg16, .src {
+	ldx		#0
+	lda		.src
+	sta		(.reg16,x)
+}
+
+; ld (hl),00h
+!macro LD_INDIRECT_IMM .reg16, .src {
+	ldx		#0
+	lda		#.src
+	sta		(.reg16,x)
+}
+
+; ld hl,(0f1f6h)
+; ld (0f1f6h),hl
+!macro LDW_INDIRECT .dst, .src {
+	lda		.src
+	sta		.dst
+	lda		.src+1
+	sta		.dst+1
+}
+
+; inc hl
+!macro INCW .reg16 {
+	inc .reg16
+	bne .j
+	inc .reg16 + 1
+.j
+}
+
+; inc (hl)
+!macro INC_INDIRECT .reg16 {
+	ldx		#0
+	lda		(.reg16,x)
+	tay					; No inca for 6502! (65C02 only)
+	iny
+	tya
+	sta		(.reg16,x)
+}
+
+; dec hl
+!macro DECW .reg16 {
+	dec .reg16
+	lda .reg16
+	cmp #$ff
+	bne .j
+	dec .reg16 + 1
+.j
+}
+
+; dec (ix+11h)
+!macro DEC_INDIRECT_OFFSET .reg, .offset {
+	ldy		#.offset
+	lda		(.reg),y
+	tax					; No deca for 6502! (65C02 only)
+	dex
+	txa
+	sta		(.reg),y
+}
+
+!macro JP_Z .label {
+	bne		.j
+	jmp		.label
+.j
+}
+
+!macro JP_NZ .label {
+	beq		.j
+	jmp		.label
+.j
+}
+
+!macro JP_C .label {
+	bcs		.j		; bcs, as C flag is inverted
+	jmp		.label
+.j
+}
+
+!macro JP_NC .label {
+	bcc		.j		; bcc, as C flag is inverted
+	jmp		.label
+.j
+}
+
+!macro RET_Z {
+	bne		.j
+	rts
+.j
+}
+
+!macro RET_NZ {
+	beq		.j
+	rts
+.j
+}
+
+!macro RET_C {
+	bcs		.j		; bcs, as C flag is inverted
+	rts
+.j
+}
+
+!macro RET_NC {
+	bcc		.j		; bcc, as C flag is inverted
+	rts
+.j
+}
+
+!macro PUSH16 .reg16 {
+	lda		.reg16
+	pha
+	lda		.reg16+1
+	pha
+}
+
+!macro POP16 .reg16 {
+	pla
+	sta		.reg16+1
+	pla
+	sta		.reg16
+}
+
+!macro ADDW .dst, .src {
+	clc
+	lda		.dst
+	adc		.src
+	sta		.dst
+	lda		.dst+1
+	adc		.src+1
+	sta		.dst+1
+}
+
+!macro INVERT_CARRY {
+	php
+	pla
+	eor		#$01	; Invert C
+	pha
+	plp
+}
+
+; Pre: Ensure that CARRY is setup correctly
+!macro SBCW .dst, .src {
+	lda		.dst
+	sbc		.src
+	sta		.dst
+	lda		.dst+1
+	sbc		.src+1
+	sta		.dst+1
+}
+
+; sub (hl)
+!macro SUB_INDIRECT .reg16 {
+	ldx		#0
+	sec
+	sbc		(.reg16,x)
+	sta		RegA
+}
+
+; ldi
+; . (de++) <- (hl++)
+; . bc--
+!macro LDI {
+	ldx		#0
+	lda		(RegHL,x)
+	sta		(RegDE,x)
+	inc		RegL
+	bne		.a
+	inc		RegH
+.a
+	inc		RegE
+	bne		.b
+	inc		RegD
+.b
+	dec		RegBC
+	bne		.j
+	dec		RegBC+1
+.j
+}
+
+; cp (ix+10h)
+!macro CP_INDIRECT_OFFSET .reg, .offset {
+	ldy		#.offset
+	cmp		(.reg),y
+}

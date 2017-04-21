@@ -1,0 +1,43 @@
+RegA	= $F0
+RegF	= RegA+1		; Not used
+RegBC	= RegA+2		; WORD
+RegC	= RegA+2
+RegB	= RegA+3
+RegDE	= RegA+4		; WORD
+RegE	= RegA+4
+RegD	= RegA+5
+RegHL	= RegA+6		; WORD
+RegL	= RegA+6
+RegH	= RegA+7
+RegIX	= RegA+8		; WORD
+
+TmpHL	= RegA+10
+TmpL	= TmpHL
+TmpH	= TmpHL+1
+
+MBBase	= TmpHL+2		; Mockingboard base (only used in INIT - not in INTERRUPT)
+MBBaseL	= MBBase
+MBBaseH	= MBBase+1
+
+ZPSize	= MBBaseH - RegA + 1
+
+;--------------------------------------
+
+!macro SaveRegs .block {
+	!set ZP = RegA
+	!do while ZP <= TmpH {
+		lda		ZP
+		sta		.block + ZP - RegA
+		!set	ZP = ZP + 1
+	}
+}
+
+!macro RestoreRegs .block {
+	!set ZP = RegA
+	!do while ZP <= TmpH {
+		lda		.block + ZP - RegA
+		sta		ZP
+		!set	ZP = ZP + 1
+	}
+}
+

@@ -1,0 +1,1450 @@
+;ACME 0.85
+
+!cpu 6502	; Compatible with all Apple2's
+!to "Cybernoid", plain
+!sl "Cybernoid.labels"
+*=$6000
+
+;------------------------------------------------------------------------------
+
+!source "..\Common\Z80-Macros.a"
+!source "..\Common\ZP-Macros.a"
+!source "..\Common\AppleDefs.a"
+!source "..\Common\MockingboardDefs.a"
+!source "..\Common\MB-Macros.a"
+
+;------------------------------------------------------------------------------
+
+!zone code
+
+;--------------------------------------
+
+NUM_SONGS = 16
+
+INIT:
+; Pre: A = Song# [0..NUM_SONGS-1]
+;
+
+	+MB_Init1	RegE
+
+	+PUSH16	RegDE
+	jsr		lef93
+	+POP16	RegDE
+	jsr		lef42
+
+	+MB_Init2
+	rts
+
+;--------------------------------------
+
+lef42:		; Called by INIT & Cmd_09
+	+LD		RegC, RegA
+	jsr		lefc1					; Pre: RegE, Post: RegHL
+
+	+LD_REG_INDIRECT RegA, RegHL	; ld a,(hl)
+	cmp		#9
+	+JP_NC	lef4e					; jp nc,0ef4eh
+
+	+LD		RegC, RegA
+	+INCW	RegHL					; inc hl
+
+lef4e:
+	+LD		RegA, RegC
+
+	+LDW	RegIX, lf214
+	dec		RegA
+	beq		lef63					; jp z,0ef63h
+
+	+LDW	RegIX, lf237
+	dec		RegA
+	beq		lef63					; jp z,0ef63h
+
+	+LDW	RegIX, lf25a
+
+lef63:
+	+LD_REG_INDIRECT RegA, RegHL	; ld a,(hl)
+	cmp		#$f4
+	php
+	+LD_REG_IMM RegA, $0A			; ld a,0ah
+	plp
+	bne		lef6e					; jp z,0ef6eh
+	+INCW	RegHL
+	+LD_REG_INDIRECT RegA, RegHL	; ld a,(hl)
+	+INCW	RegHL
+
+lef6e:
+	+CP_INDIRECT_OFFSET RegIX, $10
+	+RET_C
+
+	;
+
+	lda		RegA
+	sta		(RegIX),y				; ld (ix+10h),a
+
+	lda		#$01
+	iny								; y=$11
+	sta		(RegIX),y				; ld (ix+11h),01h
+
+	lda		RegL
+	iny								; y=$12
+	sta		(RegIX),y				; ld (ix+12h),l
+	ldy		#$14
+	sta		(RegIX),y				; ld (ix+14h),l
+	ldy		#$16
+	sta		(RegIX),y				; ld (ix+16h),l
+
+	lda		RegH
+	ldy		#$13
+	sta		(RegIX),y				; ld (ix+13h),h
+	ldy		#$15
+	sta		(RegIX),y				; ld (ix+15h),h
+	ldy		#$17
+	sta		(RegIX),y				; ld (ix+17h),h
+
+	+LD_REG_IMM	RegA, 0				; xor a
+	iny								; y=$18
+	sta		(RegIX),y				; ld (ix+18h),a
+	ldy		#$20
+	sta		(RegIX),y				; ld (ix+20h),a
+	rts
+
+;--------------------------------------
+
+; Called by INIT
+
+lef93:
+	+LD_REG_IMM	RegA, 0				; xor a
+	sta		lf224
+	sta		lf247
+	sta		lf26a
+	sta		lf1fe					; A volume
+	sta		lf1ff					; B volume
+	sta		lf200					; C volume
+
+	+LD_REG_IMM	RegA, $3f			; Enable = $3F (all disabled)
+	sta		lf1fd
+
+	;
+
+; Called by Interrupt0
+
+lefab:
+	; Copy [lf203..lf1f6] -> AY registers
+	+MB_WriteAYRegs	lf1f6
+
+	rts
+
+;--------------------------------------
+
+; Refs tables at f3a6 & f28e
+
+lefc1:
+; Pre:
+;	RegE
+;   . Assume 2*RegE < 0xFF (OK since table at lf3a6 is only 43 (50?) words)
+; Post:
+;	RegHL = 0xF28E + *(IWORD*)(0xF3A6 + 2*RegE)
+
+	lda		RegE
+	cmp		#43
+	bcc		.lt1
+		brk
+.lt1
+
+	lda		#<lf3a6
+	sta		TmpHL			; LSB
+	lda		#>lf3a6
+	sta		TmpHL+1			; MSB
+
+	+LD		RegA, RegE
+	asl		; =lsl
+	tay
+
+	clc
+	lda		(TmpHL),y		; LSB
+	adc		#<lf28e
+	sta		RegL
+	iny
+	lda		(TmpHL),y		; MSB
+	adc		#>lf28e
+	sta		RegH
+
+	rts
+
+;--------------------------------------
+
+lefd2:
+; Pre:
+;	RegE
+;   . Assume 2*RegE < 0xFF (OK since table at lf356 is only 40 words)
+; Post:
+;	RegBC = 0xF28E + *(IWORD*)(0xF356 + 2*RegE)
+
+	lda		RegE
+	cmp		#40
+	bcc		.lt2
+		brk
+.lt2
+
+	lda		#<lf356
+	sta		TmpHL			; LSB
+	lda		#>lf356
+	sta		TmpHL+1			; MSB
+
+	+LD		RegA, RegE
+	asl		; =lsl
+	tay
+
+	clc
+	lda		(TmpHL),y		; LSB
+	adc		#<lf28e
+	sta		RegC
+	iny
+	lda		(TmpHL),y		; MSB
+	adc		#>lf28e
+	sta		RegB
+
+	rts
+
+;--------------------------------------
+
+Interrupt:
+	+MB_ISR	lefe5
+
+;--------------------------------------
+
+lefe5:
+	inc		nFrameNum+2
+	lda		nFrameNum+2
+	cmp		#50
+	bne		.fnum_ok
+		lda		#0
+		sta		nFrameNum+2
+		inc		nFrameNum+1
+		lda		nFrameNum+1
+		cmp		#60
+		bne		.fnum_ok
+			lda		#0
+			sta		nFrameNum+1
+			inc		nFrameNum+0
+.fnum_ok:
+
+	;
+
+	jsr		lefab
+
+	+LDW	RegIX, lf214
+	+LDW_INDIRECT	RegHL, lf1f6	; HL = A-freq
+	jsr		lf01b
+	+LDW_INDIRECT	RegHL, lf204
+	+LDW_INDIRECT	lf1f6, RegHL	; A-freq = HL
+
+	+LDW_INDIRECT	RegHL, lf1f8	; HL = B-freq
+	+LDW	RegIX, lf237
+	jsr		lf01b
+	+LDW_INDIRECT	RegHL, lf204
+	+LDW_INDIRECT	lf1f8, RegHL	; B-freq = HL
+
+	+LDW_INDIRECT	RegHL, lf1fa	; HL = C-freq
+	+LDW	RegIX, lf25a
+	jsr		lf01b
+	+LDW_INDIRECT	RegHL, lf204
+	+LDW_INDIRECT	lf1fa, RegHL	; C-freq = HL
+
+	jmp		lf1b1
+
+;--------------------------------------
+
+lf01b:
+	+LDW_INDIRECT	lf204, RegHL
+	ldy		#$10
+	lda		(RegIX),y
+	sta		RegA
+	+RET_Z
+
+	+DEC_INDIRECT_OFFSET RegIX, $11
+	+JP_NZ	lf162
+
+	lda		#$14
+	ldy		#$1e
+	sta		(RegIX),y		; ld (ix+1eh),14h
+
+lf02d:
+	ldy		#$13
+	lda		(RegIX),y
+	sta		RegH			; ld h,(ix+13h)
+	dey
+	lda		(RegIX),y		; ld l,(ix+12h)
+	sta		RegL
+
+lf033:
+	ldx		#0
+	lda		(RegHL,x)
+	sta		RegA			; ld a,(hl) - Cmd
+	+INCW	RegHL
+	lda		(RegHL,x)
+	sta		RegE			; ld e,(hl) - Parameter
+	+INCW	RegHL
+
+	ldy		#$13
+	lda		RegH
+	sta		(RegIX),y		; ld (ix+13h),h
+	dey
+	lda		RegL
+	sta		(RegIX),y		; ld (ix+12h),l
+
+	+DEC_INDIRECT_OFFSET RegIX, $1e
+	+RET_Z
+
+	lda		RegA
+	+JP_Z	lf116
+
+	cmp		#$09
+	+JP_C	lf089			; jp if a = {1..8}
+	cmp		#$65
+	+JP_C	lf113			; jp if a = {0Ah..64h}
+
+	cmp		#$e4
+	+JP_Z	lf093			; Cmd: Noise
+	cmp		#$e3
+	+JP_Z	lf111
+	cmp		#$e1
+	+JP_Z	lf0e6
+	cmp		#$e9
+	+JP_Z	lf0a4
+	cmp		#$e8
+	+JP_Z	lf0b0
+	cmp		#$ea
+	+JP_Z	lf0bc
+	cmp		#$e2
+	+JP_Z	lf0f9
+	cmp		#$e5
+	+JP_Z	lf0c6
+	cmp		#$e6
+	+JP_Z	lf09e
+	cmp		#$f0
+	+JP_Z	lf0f3
+	cmp		#$ff
+	+JP_Z	lf0d2
+	jmp		lf033
+
+;--------------------------------------
+
+lf089:		; Cmd_01..08
+	+PUSH16	RegIX
+	jsr		lef42			; Re-init
+	+POP16	RegIX
+	jmp		lf02d
+
+;--------------------------------------
+
+lf093:		; Cmd_E4
+	+LD		RegA, RegE
+	+LD_INDIRECT_ABS lf1fc, RegA
+	+LD_INDIRECT_OFFSET_IMM RegIX, $19, $01
+	jmp		lf033
+
+;--------------------------------------
+
+lf09e:		; Cmd_E6
+	+LD_INDIRECT_OFFSET RegIX, $18, RegE
+	jmp		lf033
+
+;--------------------------------------
+
+lf0a4:		; Cmd_E9
+	jsr		lefd2			; Post: bc
+	+LD_INDIRECT_OFFSET RegIX, $0e, RegC
+	+LD_INDIRECT_OFFSET RegIX, $0f, RegB
+	jmp		lf033
+
+;--------------------------------------
+
+lf0b0:		; Cmd_E8
+	jsr		lefd2			; Post: bc
+	+LD_INDIRECT_OFFSET RegIX, $0c, RegC
+	+LD_INDIRECT_OFFSET RegIX, $0d, RegB
+	jmp		lf033
+
+;--------------------------------------
+
+lf0bc:		; Cmd_EA
+	jsr		lefd2			; Post: bc
+	+LDW_INDIRECT lf212, RegBC
+	jmp		lf033
+
+;--------------------------------------
+
+lf0c6:		; Cmd_E5
+	+LD_INDIRECT_OFFSET RegIX, $15, RegH
+	+LD_INDIRECT_OFFSET RegIX, $14, RegL
+	jsr		lefc1			; Post: hl
+	jmp		lf033
+
+;--------------------------------------
+
+lf0d2:		; Cmd_FF
+	+LD_REG_INDIRECT_OFFSET RegH, RegIX, $15
+	+LD_REG_INDIRECT_OFFSET RegL, RegIX, $14
+	+LD_REG_INDIRECT RegA, RegHL
+	tax
+	inx
+	txa
+	sta		RegA
+	+JP_NZ	lf033
+
+	+LD_REG_INDIRECT_OFFSET RegH, RegIX, $17
+	+LD_REG_INDIRECT_OFFSET RegL, RegIX, $16
+	jmp		lf033
+
+;--------------------------------------
+
+lf0e6:		; Cmd_E1
+
+	+LD_INDIRECT_OFFSET_IMM RegIX, $10, $00		; ld (ix+10h),00h
+	+LD_REG_INDIRECT_OFFSET RegH, RegIX, $1d	; ld h,(ix+1dh)
+	+LD_REG_INDIRECT_OFFSET RegL, RegIX, $1c	; ld l,(ix+1ch)
+	+LD_INDIRECT_IMM RegHL, $00					; ld (hl),00h
+	rts
+
+;--------------------------------------
+
+lf0f3:		; Cmd_F0
+	+LD_INDIRECT_OFFSET RegIX, $20, RegE
+	jmp		lf033
+
+;--------------------------------------
+
+lf492 = lf40a + ($f492-$f40a)
+
+lf0f9:		; Cmd_E2
+; Pseudo random number generator
+; . Pre:  RegE = mask
+; . Post: lf111_SMC+1 = value (Cmd_E3)
+;
+
+lf0f9_SMC_l:
+	lda		#<lf492				; LSB
+	sta		RegL
+lf0f9_SMC_h:
+	lda		#>lf492				; MSB
+	sta		RegH
+
+	+LD		RegC, RegL
+	+LD		RegB, RegH
+
+	+ADDW	RegHL, RegHL		; x2
+	+ADDW	RegHL, RegHL		; x4
+	+ADDW	RegHL, RegBC		; x5
+	+ADDW	RegHL, RegHL		; x10
+	+ADDW	RegHL, RegHL		; x20
+	+ADDW	RegHL, RegHL		; x40
+	+ADDW	RegHL, RegBC		; x41
+
+	lda		RegL
+	sta		lf0f9_SMC_l+1		; Self modifying code
+	lda		RegH
+	sta		lf0f9_SMC_h+1		; Self modifying code
+
+	; ld a,h
+	and		RegE
+	sta		RegA
+	inc		RegA
+	lda		RegA
+	sta		lf111_SMC+1			; Self modifying code
+	jmp		lf02d
+
+;--------------------------------------
+
+lf111:		; Cmd_E3
+
+lf111_SMC:
+	lda		#$05
+	sta		RegA
+
+;--------------------------------------
+
+lf113:		; Cmd_0A..64
+
+	ldy		#$18
+	lda		(RegIX),y
+	clc
+	adc		RegA
+	sta		RegA
+
+;--------------------------------------
+
+lf116:		; Cmd_00
+
+	; ld      (ix+11h),e
+	+LD_INDIRECT_OFFSET RegIX, $11, RegE
+
+	; ld      (ix+21h),a
+	+LD_INDIRECT_OFFSET RegIX, $21, RegA
+
+	; call    lf1a1
+	jsr		lf1a1
+
+	; ld      h,(ix+1dh)
+	+LD_REG_INDIRECT_OFFSET RegH, RegIX, $1d
+
+	; ld      l,(ix+1ch)
+	+LD_REG_INDIRECT_OFFSET RegL, RegIX, $1c
+
+	; ld      (hl),00h
+	+LD_INDIRECT_IMM RegHL, $00		; Set Voice's volume = 0
+
+	; push    ix
+	+PUSH16 RegIX
+
+	; pop     de
+	+POP16 RegDE
+
+	; ld      hl,0008h
+	+LDW RegHL, $0008
+
+	; add     hl,de
+	+ADDW RegHL, RegDE
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; dec (ix+19h)
+	+DEC_INDIRECT_OFFSET RegIX, $19
+	php
+
+	; ld      (ix+19h),00h
+	+LD_INDIRECT_OFFSET_IMM RegIX, $19, $00		; flags not affected
+
+	; ld      l,(ix+1ah)
+	+LD_REG_INDIRECT_OFFSET RegL, RegIX, $1A	; flags not affected
+
+	plp
+	; jr nz,0f156h
+	bne		lf156
+
+	; ld      hl,(0f212h)
+	+LDW_INDIRECT	RegHL, lf1f6				; HL = A-freq
+
+	; ld      (0f20ah),hl
+	+LDW_INDIRECT	lf20a, RegHL
+
+	; ld      hl,0000h
+	+LDW	RegHL, $0000
+
+	; ld      (0f206h),hl
+	+LDW_INDIRECT	lf206, RegHL
+
+lf156:
+	; ld      a,(0f1fdh)
+	+LD_REG_INDIRECT_ABS RegA, lf1fd			; a = AY_Data[Enable]
+
+	; and     (ix+1bh)
+	ldy		#$1b
+	and		(RegIX),y
+
+	; or      l
+	ora		RegL
+
+	; and     3fh
+	and		#$3f
+	sta		RegA
+
+	; ld      (0f1fdh),a
+	+LD_INDIRECT_ABS lf1fd, RegA				; Set AY_Data[Enable]
+
+lf162:
+	; call    lf1c9
+	jsr		lf1c9
+
+	; ld      h,(ix+1dh)
+	+LD_REG_INDIRECT_OFFSET RegH, RegIX, $1d
+
+	; ld      l,(ix+1ch)
+	+LD_REG_INDIRECT_OFFSET RegL, RegIX, $1c
+
+	; ld      a,(hl)
+	+LD_REG_INDIRECT RegA, RegHL
+
+	; add     a,c
+	clc
+	adc		RegC
+
+	; sub     80h
+	sec
+	sbc		#$80
+	sta		RegA
+
+	; ld      (hl),a
+	+LD_INDIRECT RegHL, RegA
+
+	; ld      hl,(0f204h)
+	+LDW_INDIRECT RegHL, lf204
+
+	; ld      a,h
+	+LD		RegA, RegH
+
+	; or      l
+	ora		RegL
+
+	; ret     z
+	+RET_Z
+
+	;
+
+	; ld      a,(ix+20h)
+	+LD_REG_INDIRECT_OFFSET RegA, RegIX, $20
+
+	; or      a
+;	ora		RegA		; Previous 6502 LDA sets flags
+
+	; jp      nz,lf192
+	+JP_NZ		lf192
+
+	; inc     ix
+	+INCW	RegIX
+
+	; inc     ix
+	+INCW	RegIX
+
+	; call    lf1c9
+	jsr		lf1c9
+
+Portamento:
+	; ld      hl,(0f204h)
+	+LDW_INDIRECT RegHL, lf204
+
+	; ld      b,00h
+	+LD_REG_IMM	RegB, $00
+
+	; add     hl,bc
+	+ADDW	RegHL, RegBC
+
+	; ld      c,80h
+	+LD_REG_IMM	RegC, $80
+
+	; sbc     hl,bc
+	+INVERT_CARRY
+	+SBCW	RegHL, RegBC
+
+	; ld      (0f204h),hl
+	+LDW_INDIRECT	lf204, RegHL
+
+	; ret
+	rts
+
+;--------------------------------------
+
+lf192:
+	; dec     (ix+22h)
+	+DEC_INDIRECT_OFFSET RegIX, $22
+	php
+
+	; ld      a,(ix+21h)
+	+LD_REG_INDIRECT_OFFSET RegA, RegIX, $21
+
+	; jr      z,lf1a1
+	plp
+	beq		lf1a1
+
+		; add     a,(ix+20h)
+		ldy		#$20
+		clc
+		adc		(RegIX),y
+		sta		RegA
+
+		; ld      (ix+22h),01h
+		+LD_INDIRECT_OFFSET_IMM RegIX, $22, $01
+
+lf1a1:
+	; RegHL = 0xF28E + 2*RegA
+    ; . Assume 2*RegA < 0xFF (OK since table at lf28e is only 100 words)
+
+	lda		RegA
+	cmp		#100
+	bcc		.lt3
+		brk
+.lt3
+
+	lda		RegA
+	asl											; A = 2*RegA
+	clc
+	adc		#<lf28e								; LSB
+	sta		RegL
+	lda		#0
+	adc		#>lf28e								; MSB
+	sta		RegH								; LDI src: RegHL
+
+;	lda		RegA
+;	clc
+;	adc		#<lf28e								; LSB
+;	sta		RegL
+;	lda		#0
+;	adc		#>lf28e								; MSB
+;	sta		RegH
+;
+;	lda		RegA
+;	clc
+;	adc		RegL								; LSB
+;	sta		RegL
+;	lda		#0
+;	adc		RegH								; MSB
+;	sta		RegH								; LDI src: RegHL
+
+	; ld      de,0f204h
+	+LDW	RegDE, lf204						; LDI dst: RegDE
+
+	; ldi
+	+LDI
+
+	; ldi
+	+LDI
+
+	; ret
+	rts
+
+;--------------------------------------
+
+lf1b1:
+	; ld      ix,0f206h
+	+LDW	RegIX, lf206
+
+	; call    lf1c9
+	jsr		lf1c9
+
+	; ld      hl,0f1fch
+	+LDW	RegHL, lf1fc
+
+	; ld      a,(hl)
+	+LD_REG_INDIRECT RegA, RegHL
+
+	; add     a,c
+	clc
+	adc		RegC
+
+	; sub     80h
+	sec
+	sbc		#$80
+	sta		RegA
+
+	; ld      (hl),a
+	+LD_INDIRECT RegHL, RegA
+
+	; cp      11h
+	cmp		#$11
+
+	; ret     c
+	+RET_C
+
+	; inc     hl
+	+INCW	RegHL
+
+	; ld      a,(hl)
+	+LD_REG_INDIRECT RegA, RegHL
+
+	; or      38h
+	ora		#$38
+	sta		RegA
+
+	; ld      (hl),a
+	+LD_INDIRECT RegHL, RegA
+
+	; ret
+	rts
+
+;--------------------------------------
+
+lf1c9:
+	; push    ix
+	+PUSH16		RegIX
+
+	; pop     hl
+	+POP16		RegHL
+
+	; ld      d,(ix+05h)
+	+LD_REG_INDIRECT_OFFSET RegD, RegIX, $05
+
+	; ld      e,(ix+04h)
+	+LD_REG_INDIRECT_OFFSET RegE, RegIX, $04
+
+	; inc     (hl)
+	+INC_INDIRECT RegHL
+
+	; ld      a,(de)
+	+LD_REG_INDIRECT	RegA, RegDE
+
+	; sub     (hl)
+	+SUB_INDIRECT RegHL
+	php
+
+	; ld      c,80h
+	+LD_REG_IMM			RegC, $80
+
+	; ret     nz
+	plp
+	+RET_NZ
+
+	;
+
+	; ld      (hl),a
+	+LD_INDIRECT RegHL, RegA
+
+	; inc     de
+	+INCW		RegDE
+
+	; ld      a,(de)
+	+LD_REG_INDIRECT	RegA, RegDE
+
+	; ld      c,a
+	+LD		RegC, RegA
+
+	; inc     de
+	+INCW		RegDE
+
+	; inc     hl
+	+INCW		RegHL
+
+	; inc     (hl)
+	+INC_INDIRECT RegHL
+
+	; ld      a,(de)
+	+LD_REG_INDIRECT	RegA, RegDE
+
+	; sub     (hl)
+	+SUB_INDIRECT	RegHL
+
+	; ret     nz
+	+RET_NZ
+
+	;
+
+	; ld      (hl),a
+	+LD_INDIRECT RegHL, RegA
+
+	; inc     de
+	+INCW		RegDE
+
+	; ld      a,(de)
+	+LD_REG_INDIRECT	RegA, RegDE
+
+	; inc     a
+	inc		RegA
+
+	; jp      nz,lf1ef
+	+JP_NZ lf1ef
+
+		; ld      d,(ix+0dh)
+		+LD_REG_INDIRECT_OFFSET RegD, RegIX, $0D
+
+		; ld      e,(ix+0ch)
+		+LD_REG_INDIRECT_OFFSET RegE, RegIX, $0C
+
+lf1ef:
+	; ld      (ix+05h),d
+	+LD_INDIRECT_OFFSET RegIX, $05, RegD
+
+	; ld      (ix+04h),e
+	+LD_INDIRECT_OFFSET RegIX, $04, RegE
+
+	; ret
+	rts
+
+;------------------------------------------------------------------------------
+
+; Skyfox MB detection routine:
+
+SF_GetMBSlot:
+; Pre:
+; Post:
+;  Z = 0 (NE) : MB detected
+;  X = HI(MB base address)
+;  (MBBase) = MB slot address
+;
+
+	jsr		SF_Detect
+
+.Loop:	stx		TmpL
+		jsr		SF_Detect
+		cpx		TmpL
+		bne		.Loop
+
+	cpx		#$C8
+	rts
+
+;--------------------------------------
+
+SF_Detect:
+	lda		#0
+	sta		MBBaseL
+	lda		#$c1
+	sta		MBBaseH
+	ldx		#7
+
+.SlotNext:
+		ldy		#$00+SY6522_TIMER1L_COUNTER
+		jsr		SF_GetTimerL
+		bne		.SlotLoop
+
+		ldy		#$80+SY6522_TIMER1L_COUNTER
+		jsr		SF_GetTimerL
+		beq		.SlotDone
+
+.SlotLoop:
+		inc		MBBaseH
+		dex
+		bne		.SlotNext
+
+.SlotDone:
+	ldx		MBBaseH
+	rts
+
+;--------------------------------------
+
+
+SF_GetTimerL:
+	lda		(MBBase),y
+	cmp		MBBaseL
+	sbc		(MBBase),y
+	cmp		#$08
+	rts
+
+;------------------------------------------------------------------------------
+
+!zone data
+
+ZPBlock:	!fill ZPSize,0
+Z80Block:	!fill ZPSize,0
+nMBBaseHi:	!byte 0
+
+;--------------------------------------
+
+; Song Hi/Lo reg values:
+SongTbl:	!byte 01	;  0: (AY: Title/In-game)
+			!byte 34	;  1: (AY: Game over)
+			!byte 40	;  2: (AY: Hall of fame)
+			!byte 00	;  3: (Beeper: Title)
+			!byte 22	;  4: (AY: SFX 01)
+			!byte 23	;  5: (AY: SFX 02)
+			!byte 24	;  6: (AY: SFX 03)
+			!byte 25	;  7: (AY: SFX 04)
+			!byte 26	;  8: (AY: SFX 05)
+			!byte 27	;  9: (AY: SFX 06)
+			!byte 28	; 10: (AY: SFX 07)
+			!byte 29	; 11: (AY: SFX 08)
+			!byte 30	; 12: (AY: SFX 09)
+			!byte 31	; 13: (AY: SFX 10)
+			!byte 32	; 14: (AY: SFX 11)
+			!byte 33	; 15: (AY: SFX 12)
+
+;--------------------------------------
+
+; AY regs [0..$D]
+AYRegValues:
+lf1f6:		!word 0		; A period
+lf1f8:		!word 0		; B period
+lf1fa:		!word 0		; C period
+lf1fc:		!byte 0		; Noise period
+lf1fd:		!byte 0		; Enable
+lf1fe:		!byte 0		; A volume
+lf1ff:		!byte 0		; B volume
+lf200:		!byte 0		; C volume
+lf201:		!word 0		; Envelope period
+lf203:		!byte 0		; Envelope shape
+
+;--------------------------------------
+
+lf204:		!word 0		; Tone period
+lf206:		!word 0
+			!word 0
+
+;--------------------------------------
+
+lf20a:		!word 0
+			!word 0
+			!word 0
+			!word 0
+
+lf212:		!word 0
+
+;--------------------------------------
+
+; Voice-A struct
+
+lf214:		!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!word 0
+			!word 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!word 0
+			!word 0
+lf224:		!byte 0
+			!byte 0
+			!word 0
+			!word 0
+			!word 0
+			!byte 0
+			!byte 0
+			!byte $08	; 001000 - Disable A (Noise)
+			!byte $36	; 110110 - Enable A (Noise & Tone)
+			!word lf1fe	; &VolA
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+
+;--------------------------------------
+
+; Voice-B struct
+
+lf237:		!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!word 0
+			!word 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!word 0
+			!word 0
+lf247:		!byte 0
+			!byte 0
+			!word 0
+			!word 0
+			!word 0
+			!byte 0
+			!byte 0
+			!byte $10	; 010000 - Disable B (Noise)
+			!byte $2d	; 101101 - Enable B (Noise & Tone)
+			!word lf1ff	; &VolB
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+
+;--------------------------------------
+
+; Voice-C struct
+
+lf25a:		!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!word 0
+			!word 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!word 0
+			!word 0
+lf26a:		!byte 0
+			!byte 0
+			!word 0
+			!word 0
+			!word 0
+			!byte 0
+			!byte 0
+			!byte $20	; 100000 - Disable C (Noise)
+			!byte $1b	; 011011 - Enable C (Noise & Tone)
+			!word lf200	; &VolC
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+			!byte 0
+
+;--------------------------------------
+
+;lf27d:
+			!fill 17,0		; ?
+
+;--------------------------------------
+
+; Ref'ed by func @ f1a1
+; Ref'ed by func @ efc1 (only table's base addr)
+; Ref'ed by func @ efd2 (only table's base addr)
+
+lf28e:
+; Table size = WORD[100]
+; . Period for each note
+; . ZX Spectrum's CLK for AY8912 = 1.77345MHz
+; . Envelopes are not used, so no E-Periods to convert
+
+!macro ZX2MB .period {
+	!word .period*10227/17734
+}
+
+	+ZX2MB $0000
+	+ZX2MB $2a17
+	+ZX2MB $27ba
+	+ZX2MB $2580
+	+ZX2MB $2365
+	+ZX2MB $2168
+	+ZX2MB $1f88
+	+ZX2MB $1dc3
+	+ZX2MB $1c18
+	+ZX2MB $1a84
+	+ZX2MB $1907
+	+ZX2MB $179f
+	+ZX2MB $164c
+	+ZX2MB $150c
+	+ZX2MB $13dd
+	+ZX2MB $12c0
+	+ZX2MB $11b2
+	+ZX2MB $10b4
+	+ZX2MB $0fc4
+	+ZX2MB $0ee2
+	+ZX2MB $0e0c
+	+ZX2MB $0d42
+	+ZX2MB $0c84
+	+ZX2MB $0bd0
+	+ZX2MB $0b26
+	+ZX2MB $0a86
+	+ZX2MB $09ef
+	+ZX2MB $0960
+	+ZX2MB $08d9
+	+ZX2MB $085a
+	+ZX2MB $07e2
+	+ZX2MB $0771
+	+ZX2MB $0706
+	+ZX2MB $06a1
+	+ZX2MB $0642
+	+ZX2MB $05e8
+	+ZX2MB $0593
+	+ZX2MB $0543
+	+ZX2MB $04f7
+	+ZX2MB $04b0
+	+ZX2MB $046d
+	+ZX2MB $042d
+	+ZX2MB $03f1
+	+ZX2MB $03b8
+	+ZX2MB $0383
+	+ZX2MB $0350
+	+ZX2MB $0321
+	+ZX2MB $02f4
+	+ZX2MB $02ca
+	+ZX2MB $02a1
+	+ZX2MB $027c
+	+ZX2MB $0258
+	+ZX2MB $0236
+	+ZX2MB $0217
+	+ZX2MB $01f9
+	+ZX2MB $01dc
+	+ZX2MB $01c1
+	+ZX2MB $01a8
+	+ZX2MB $0190
+	+ZX2MB $017a
+	+ZX2MB $0165
+	+ZX2MB $0151
+	+ZX2MB $013e
+	+ZX2MB $012c
+	+ZX2MB $011b
+	+ZX2MB $010b
+	+ZX2MB $00fc
+	+ZX2MB $00ee
+	+ZX2MB $00e1
+	+ZX2MB $00d4
+	+ZX2MB $00c8
+	+ZX2MB $00bd
+	+ZX2MB $00b2
+	+ZX2MB $00a8
+	+ZX2MB $009f
+	+ZX2MB $0096
+	+ZX2MB $008e
+	+ZX2MB $0086
+	+ZX2MB $007e
+	+ZX2MB $0077
+	+ZX2MB $0070
+	+ZX2MB $006a
+	+ZX2MB $0064
+	+ZX2MB $005e
+	+ZX2MB $0059
+	+ZX2MB $0054
+	+ZX2MB $004f
+	+ZX2MB $004b
+	+ZX2MB $0047
+	+ZX2MB $0043
+	+ZX2MB $003f
+	+ZX2MB $003c
+	+ZX2MB $0038
+	+ZX2MB $0035
+	+ZX2MB $0032
+	+ZX2MB $002f
+	+ZX2MB $002d
+	+ZX2MB $002a
+	+ZX2MB $0028
+	+ZX2MB $0000
+
+;--------------------------------------
+
+; Ref'ed by func @ efd2
+
+lf356:
+; Table size = WORD[40]
+
+	!word $017c		; lf28e + $17c = lf40a (addr of music data)
+	!word $0180
+	!word $018a
+	!word $0194
+	!word $0195
+	!word $019c
+	!word $01a9
+	!word $01b6
+	!word $01c3
+	!word $01cd
+	!word $01ce
+	!word $01cf
+	!word $01d9
+	!word $01e3
+	!word $01ed
+	!word $01f7
+	!word $0201
+	!word $020b
+	!word $0212
+	!word $0228
+	!word $022c
+	!word $0230
+	!word $023a
+	!word $0247
+	!word $0248
+	!word $0258
+	!word $025f
+	!word $0266
+	!word $0267
+	!word $026b
+	!word $0278
+	!word $027f
+	!word $0280
+	!word $0281
+	!word $0282
+	!word $028c
+	!word $02a5
+	!word $02be
+	!word $02ce
+	!word $0000
+
+;--------------------------------------
+
+; Ref'ed by func @ efc1
+
+lf3a6:
+; Table size = WORD[43]
+
+	!word $02da
+	!word $02e0
+	!word $039c
+	!word $03a5
+	!word $03b0
+	!word $03e5
+	!word $046e
+	!word $04f1
+	!word $0518
+	!word $053f
+	!word $056c
+	!word $0577
+	!word $057c
+	!word $0597
+	!word $061a
+	!word $061d
+	!word $0632
+	!word $06c3
+	!word $06e0
+	!word $06f9
+	!word $0714
+	!word $0787
+	!word $078c
+	!word $0796
+	!word $07a4
+	!word $07ae
+	!word $07b8
+	!word $07c8
+	!word $07d8
+	!word $07e2
+	!word $07f0
+	!word $07fe
+	!word $0808
+	!word $0818
+	!word $082a
+	!word $0838
+	!word $083b
+	!word $0848
+	!word $085b
+	!word $0894
+	!word $08a7
+	!word $08c5
+	!word $08e2		; lf28e + $8e2 = lfb70 (near end of music data)
+
+;--------------------------------------
+
+;lf3fc:
+; Table size = WORD[7]
+; . ?
+
+	!word $1a4a
+	!word $1a58
+	!word $1a62
+	!word $1aae
+	!word $1aca
+	!word $1ae5
+	!word $0000
+
+;--------------------------------------
+
+; Music data
+
+lf40a:
+; Table size = BYTE[1916]
+
+	!byte $C8,$80,$C8,$FF,$01,$81,$0D,$09,$7F,$09,$C8,$80,$C8,$FF,$01,$8D
+	!byte $01,$01,$7F,$04,$01,$77,$01,$FF,$FF,$01,$87,$01,$C8,$80,$C8,$FF
+	!byte $01,$8C,$01,$0A,$7F,$08,$14,$7F,$04,$C8,$80,$C8,$FF,$01,$8D,$01
+	!byte $02,$7F,$07,$0C,$7F,$06,$C8,$80,$C8,$FF,$01,$8D,$01,$01,$7F,$0B
+	!byte $09,$7F,$02,$C8,$80,$C8,$FF,$01,$88,$01,$01,$82,$01,$C8,$80,$C8
+	!byte $FF,$FF,$FF,$01,$77,$01,$01,$83,$03,$C8,$80,$C8,$FF,$02,$81,$02
+	!byte $02,$7F,$03,$02,$81,$01,$FF,$01,$81,$02,$01,$7F,$04,$01,$81,$02
+	!byte $FF,$01,$89,$01,$01,$79,$01,$C8,$80,$C8,$FF,$01,$82,$02,$01,$7E
+	!byte $04,$01,$82,$02,$FF,$01,$87,$03,$01,$79,$06,$01,$87,$03,$FF,$01
+	!byte $88,$0A,$01,$96,$C8,$FF,$01,$93,$01,$01,$6D,$01,$01,$7F,$02,$01
+	!byte $81,$04,$01,$7F,$04,$01,$81,$02,$C8,$80,$C8,$FF,$02,$81,$C8,$FF
+	!byte $02,$7F,$C8,$FF,$01,$80,$01,$01,$B4,$01,$C8,$80,$C8,$FF,$01,$80
+	!byte $01,$01,$8B,$01,$01,$B4,$01,$C8,$80,$C8,$FF,$FF,$01,$85,$03,$01
+	!byte $71,$01,$01,$80,$01,$01,$8F,$01,$01,$7B,$03,$FF,$01,$85,$03,$01
+	!byte $71,$01,$FF,$01,$96,$01,$02,$79,$02,$FF,$FF,$01,$A1,$C8,$FF,$01
+	!byte $85,$03,$09,$7D,$04,$0E,$7F,$03,$C8,$80,$C8,$FF,$01,$84,$01,$01
+	!byte $7F,$01,$FF,$FF,$FF,$FF,$02,$8D,$01,$02,$67,$01,$C8,$80,$C8,$FF
+	!byte $01,$8F,$01,$08,$80,$01,$02,$7F,$01,$04,$7F,$01,$07,$7F,$02,$0C
+	!byte $7F,$04,$16,$7F,$07,$C8,$80,$C8,$FF,$01,$79,$01,$01,$8B,$01,$01
+	!byte $6F,$01,$01,$9B,$01,$01,$5B,$01,$01,$AF,$01,$01,$47,$01,$01,$C3
+	!byte $01,$FF,$01,$8F,$01,$01,$7A,$01,$01,$86,$01,$01,$7F,$09,$08,$7F
+	!byte $06,$FF,$01,$99,$03,$01,$79,$07,$0A,$7E,$C8,$FF,$01,$9B,$E1,$FF
+	!byte $FF,$FF,$FF,$AF,$01,$E8,$00,$00,$30,$E5,$04,$02,$02,$E5,$04,$02
+	!byte $03,$E5,$04,$02,$08,$00,$54,$02,$04,$E5,$05,$02,$04,$E5,$06,$02
+	!byte $04,$E5,$05,$02,$04,$E5,$06,$02,$00,$E4,$06,$00,$06,$E4,$06,$00
+	!byte $06,$E5,$0D,$E5,$10,$E5,$0D,$E5,$10,$E5,$08,$E5,$08,$E5,$08,$E5
+	!byte $0C,$02,$04,$E5,$05,$02,$04,$E5,$06,$02,$04,$E5,$05,$02,$04,$E5
+	!byte $06,$02,$00,$F0,$00,$E4,$06,$3A,$06,$E4,$06,$39,$06,$E5,$0D,$E5
+	!byte $10,$E5,$0D,$E5,$10,$02,$25,$E5,$26,$E4,$06,$00,$06,$E4,$06,$00
+	!byte $06,$E5,$09,$E5,$07,$E5,$09,$E5,$08,$E6,$13,$02,$13,$E5,$14,$E4
+	!byte $01,$00,$0C,$02,$13,$E5,$14,$E4,$01,$00,$0C,$E6,$15,$02,$15,$E5
+	!byte $14,$E4,$01,$00,$0C,$02,$15,$E5,$14,$02,$0F,$E5,$05,$02,$0F,$E5
+	!byte $05,$02,$0F,$E5,$05,$02,$0F,$E5,$05,$E4,$06,$00,$06,$E4,$06,$00
+	!byte $06,$E5,$0D,$E5,$0D,$E5,$10,$02,$25,$E5,$26,$E5,$07,$E5,$0B,$FF
+	!byte $E8,$00,$00,$60,$E5,$07,$E5,$07,$FF,$E5,$09,$E8,$00,$00,$30,$E5
+	!byte $07,$E5,$07,$FF,$E6,$07,$E8,$02,$E9,$0D,$F0,$00,$1F,$0C,$1F,$0C
+	!byte $22,$0C,$24,$0C,$26,$0C,$F0,$0F,$26,$0C,$F0,$0E,$26,$0C,$26,$0C
+	!byte $F0,$10,$22,$0C,$F0,$00,$22,$0C,$16,$0C,$22,$0C,$16,$0C,$F0,$10
+	!byte $24,$0C,$F0,$00,$18,$0C,$24,$0C,$FF,$E6,$07,$E8,$06,$F0,$18,$03
+	!byte $27,$EA,$16,$E4,$01,$30,$06,$E4,$01,$31,$06,$E4,$01,$32,$06,$E4
+	!byte $01,$30,$06,$E4,$01,$32,$06,$E4,$01,$35,$06,$EA,$00,$E4,$06,$3A
+	!byte $0C,$EA,$16,$E4,$01,$3C,$06,$E4,$01,$39,$06,$E4,$01,$00,$06,$E4
+	!byte $01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$EA,$00,$E4,$06,$00
+	!byte $0C,$EA,$16,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4
+	!byte $01,$00,$06,$E4,$01,$2E,$06,$E4,$01,$00,$06,$EA,$00,$E4,$06,$30
+	!byte $0C,$EA,$16,$E4,$01,$32,$06,$E4,$01,$30,$06,$E4,$01,$00,$06,$E4
+	!byte $01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$EA,$00,$E4,$06,$00
+	!byte $0C,$FF,$03,$27,$EA,$16,$E4,$01,$30,$06,$E4,$01,$31,$06,$E4,$01
+	!byte $32,$06,$E4,$01,$30,$06,$E4,$01,$32,$06,$E4,$01,$35,$06,$EA,$00
+	!byte $E4,$06,$3A,$0C,$EA,$16,$E4,$01,$3C,$06,$E4,$01,$39,$06,$E4,$01
+	!byte $00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$EA,$00
+	!byte $E4,$06,$39,$0C,$EA,$16,$E4,$01,$35,$06,$E4,$01,$00,$06,$E4,$01
+	!byte $00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$EA,$00
+	!byte $E4,$06,$37,$0C,$EA,$16,$E4,$01,$34,$06,$E4,$01,$00,$06,$E4,$01
+	!byte $00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$EA,$00
+	!byte $E4,$06,$00,$0C,$FF,$E8,$07,$EA,$15,$03,$00,$E4,$01,$00,$06,$E4
+	!byte $01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$EA,$00,$E4,$06,$00
+	!byte $0C,$EA,$15,$E4,$01,$00,$06,$E4,$01,$00,$06,$FF,$E8,$07,$EA,$16
+	!byte $03,$00,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01
+	!byte $00,$06,$EA,$00,$E4,$06,$00,$0C,$EA,$16,$E4,$01,$00,$06,$E4,$01
+	!byte $00,$06,$FF,$E6,$13,$E8,$07,$EA,$00,$E9,$00,$03,$00,$EA,$16,$E4
+	!byte $01,$43,$06,$E4,$01,$41,$06,$E4,$0E,$3C,$06,$E4,$01,$3E,$06,$EA
+	!byte $00,$E4,$06,$00,$0C,$EA,$16,$E4,$06,$00,$06,$E4,$06,$00,$06,$FF
+	!byte $E6,$13,$E8,$04,$E9,$10,$00,$0C,$48,$A8,$E1,$00,$F0,$00,$F0,$FF
+	!byte $E8,$07,$EA,$16,$E4,$01,$00,$06,$E4,$01,$00,$06,$E4,$01,$00,$06
+	!byte $E4,$01,$00,$06,$EA,$00,$E4,$06,$00,$0C,$FF,$E6,$07,$E8,$06,$E9
+	!byte $0F,$F0,$18,$1F,$06,$F0,$00,$1F,$06,$F0,$18,$1F,$06,$F0,$00,$1F
+	!byte $06,$EA,$14,$E4,$06,$00,$06,$1F,$06,$F0,$18,$1F,$06,$F0,$00,$1F
+	!byte $06,$F0,$1B,$1E,$06,$F0,$00,$1E,$06,$F0,$1B,$1E,$06,$F0,$00,$1E
+	!byte $06,$E4,$06,$00,$06,$1E,$06,$F0,$1B,$1E,$06,$F0,$00,$1E,$06,$F0
+	!byte $1B,$1F,$06,$F0,$00,$1F,$06,$F0,$1B,$1F,$06,$F0,$00,$1F,$06,$EA
+	!byte $14,$E4,$06,$00,$06,$1F,$06,$F0,$1B,$1F,$06,$F0,$00,$1F,$06,$F0
+	!byte $1D,$21,$06,$F0,$00,$21,$06,$F0,$1D,$21,$06,$F0,$00,$21,$06,$E4
+	!byte $06,$21,$06,$21,$06,$F0,$1B,$21,$06,$F0,$00,$21,$06,$FF,$00,$06
+	!byte $FF,$E4,$06,$00,$06,$E4,$06,$00,$06,$E5,$0D,$E8,$04,$3C,$30,$48
+	!byte $90,$3C,$30,$48,$90,$FF,$02,$11,$F0,$18,$22,$06,$F0,$00,$22,$06
+	!byte $F0,$18,$22,$06,$F0,$00,$22,$06,$EA,$01,$E4,$06,$00,$06,$22,$06
+	!byte $F0,$18,$22,$06,$F0,$00,$22,$06,$F0,$28,$1D,$06,$F0,$00,$1D,$06
+	!byte $F0,$28,$1D,$06,$F0,$00,$1D,$06,$E4,$06,$00,$06,$1D,$06,$F0,$29
+	!byte $E4,$06,$1D,$06,$F0,$00,$1D,$06,$02,$12,$EA,$01,$F0,$21,$E4,$01
+	!byte $24,$06,$F0,$00,$E4,$01,$24,$06,$F0,$1F,$E4,$01,$24,$06,$F0,$00
+	!byte $E4,$01,$24,$06,$F0,$1F,$E4,$06,$24,$06,$F0,$00,$24,$06,$24,$06
+	!byte $24,$06,$F0,$1F,$E4,$0E,$24,$06,$E4,$0A,$24,$06,$E4,$07,$24,$06
+	!byte $E4,$04,$24,$06,$F0,$00,$E4,$01,$24,$06,$E4,$04,$24,$06,$E4,$0A
+	!byte $29,$06,$E4,$0E,$2B,$06,$FF,$E6,$1F,$E8,$08,$E9,$0C,$00,$0C,$22
+	!byte $0C,$24,$0C,$26,$0C,$2D,$06,$00,$06,$2D,$06,$00,$06,$2D,$0C,$2E
+	!byte $0C,$00,$30,$E1,$E6,$1F,$E8,$08,$E9,$0C,$2D,$0C,$2B,$06,$00,$06
+	!byte $2B,$06,$00,$06,$2B,$24,$E9,$11,$37,$24,$00,$60,$E1,$E8,$02,$E9
+	!byte $0D,$24,$18,$27,$18,$2B,$18,$2E,$18,$27,$24,$28,$0C,$29,$18,$2D
+	!byte $0C,$2E,$06,$30,$06,$00,$60,$E1,$E8,$05,$F0,$00,$E9,$0C,$03,$27
+	!byte $EA,$16,$E4,$01,$30,$06,$2E,$06,$E4,$01,$2C,$06,$29,$06,$EA,$00
+	!byte $E4,$06,$27,$06,$24,$06,$E4,$01,$22,$06,$24,$06,$EA,$16,$E4,$01
+	!byte $27,$06,$00,$06,$E4,$01,$24,$06,$00,$06,$EA,$00,$E4,$06,$2B,$06
+	!byte $00,$06,$E4,$01,$27,$06,$27,$06,$EA,$16,$E4,$01,$00,$06,$00,$06
+	!byte $E4,$01,$00,$06,$00,$06,$EA,$00,$E4,$06,$29,$06,$00,$06,$E4,$01
+	!byte $26,$06,$26,$06,$EA,$16,$E4,$01,$00,$06,$00,$06,$E4,$01,$00,$06
+	!byte $00,$06,$EA,$00,$E4,$06,$00,$06,$00,$06,$FF,$E6,$02,$E5,$13,$FF
+	!byte $02,$F4,$0F,$E8,$19,$E9,$18,$5D,$48,$E1,$02,$F4,$0F,$E8,$01,$F0
+	!byte $3C,$EA,$05,$E4,$02,$24,$48,$E1,$02,$F4,$0F,$E8,$1D,$E9,$1E,$4F
+	!byte $4D,$E1,$03,$F4,$0F,$E8,$06,$E9,$19,$53,$0F,$E1,$03,$F4,$0F,$E8
+	!byte $07,$E9,$01,$EA,$01,$E4,$07,$5E,$10,$EA,$16,$E1,$03,$F4,$0F,$E8
+	!byte $05,$E9,$1C,$EA,$27,$E4,$03,$4F,$14,$EA,$16,$E1,$02,$F4,$0F,$E8
+	!byte $15,$E9,$10,$43,$14,$E1,$03,$F4,$0F,$E2,$0F,$E8,$25,$E9,$26,$E6
+	!byte $3E,$E3,$19,$E1,$02,$F4,$0F,$E8,$23,$E9,$24,$EA,$00,$E4,$0E,$56
+	!byte $63,$E1,$03,$F4,$0F,$E8,$12,$E9,$24,$61,$20,$E1,$02,$F4,$0F,$E8
+	!byte $1D,$E9,$1A,$EA,$0B,$E4,$0C,$39,$40,$E9,$0C,$E1,$03,$F4,$0F,$E8
+	!byte $06,$E9,$22,$EA,$00,$E4,$0E,$5E,$02,$5E,$10,$EA,$16,$E1,$01,$F4
+	!byte $0F,$02,$24,$00,$12,$03,$24,$00,$12,$E5,$24,$E1,$00,$03,$E1,$F4
+	!byte $0F,$E8,$02,$E9,$1A,$EA,$15,$E4,$07,$5E,$5A,$E1,$E6,$07,$E8,$02
+	!byte $E9,$0F,$20,$48,$22,$18,$23,$48,$E8,$05,$25,$78,$E5,$0A,$E1,$E6
+	!byte $07,$E8,$07,$F0,$0C,$37,$06,$37,$06,$35,$0C,$EA,$16,$E4,$04,$33
+	!byte $0C,$30,$18,$32,$0C,$E4,$04,$33,$0C,$E4,$04,$35,$0C,$36,$06,$36
+	!byte $06,$35,$0C,$E4,$04,$33,$0C,$2F,$18,$31,$0C,$EA,$14,$E4,$06,$33
+	!byte $0C,$E8,$05,$35,$60,$F0,$00,$FF,$E6,$37,$E8,$0E,$E9,$00,$E2,$1F
+	!byte $E3,$06,$13,$06,$E3,$06,$1F,$06,$E3,$06,$FF,$01,$F4,$0F,$E8,$08
+	!byte $E9,$0F,$E2,$0E,$EA,$13,$02,$2A,$03,$29,$E6,$1E,$E3,$18,$E4,$01
+	!byte $00,$18,$E3,$18,$E4,$01,$00,$18,$FF,$F4,$0F,$E8,$08,$E9,$0C,$E6
+	!byte $31,$E3,$06,$E6,$36,$E3,$06,$E6,$38,$E3,$06,$E6,$3A,$E3,$06,$E6
+	!byte $38,$E3,$2A,$00,$0C,$FF,$F4,$0F,$E8,$08,$E9,$0C,$E6,$1E,$E3,$18
+	!byte $E3,$18,$E3,$18,$E3,$18,$FF,$E6,$34,$1A,$00,$00
+
+;lfb86:
+

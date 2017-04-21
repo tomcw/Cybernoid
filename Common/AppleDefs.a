@@ -1,0 +1,13 @@
+IRQL	= $3FE
+IRQH	= $3FF
+
+;--------------------------------------
+
+SW_SLOTXROM_ENA = $C006
+SW_SLOTXROM_DIS = $C007
+SW_SLOTXROM_R = $C015	; Active low
+
+SW_SLOT3ROM_DIS = $C00A
+SW_SLOT3ROM_ENA = $C00B
+SW_SLOT3ROM_R = $C017	; Active high
+
