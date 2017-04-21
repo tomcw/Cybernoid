@@ -1,4 +1,4 @@
-# Cybernoid
+# Cybernoid Music Disk
 
 My motivation was to really push the MAME AY8910 emu code, as the Apple
 Mockingboard music (Skyfox, Ultima) wasn't really exercising it that
