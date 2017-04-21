@@ -8,9 +8,9 @@ So as a little R&D proj, I thought I'd convert Dave Rogers' Spectrum
 128 Cybernoid routine (written in 1988).
 
 Here's a summary of how I did it:
-- I got cybernoid.ay from (here)[http://www.worldofspectrum.org/projectay/gdmusic.htm]
+- I got cybernoid.ay from [here](http://www.worldofspectrum.org/projectay/gdmusic.htm)
 - Split it into bin's with AYSplitR
-- Disassembled with Inkland's dz80w (here)[http://www.inkland.org.uk/dz80/index.htm]
+- Disassembled with Inkland's dz80w [here])http://www.inkland.org.uk/dz80/index.htm)
 - I wrote 6502 macros to replace the z80 opcodes
 - For cybernoid, I hand converted the z80 code to 6502 (using the macros)
 - I added a few extension to AppleWin's debugger to help debug the 6502 code (ACME symbol loading & ZP pointer support).
