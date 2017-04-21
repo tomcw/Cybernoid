@@ -11,7 +11,7 @@ Here's a summary of how I did it:
 . I got cybernoid.ay from
 http://www.worldofspectrum.org/projectay/gdmusic.htm
 . Split it into bin's with AYSplitR
-. Disassembled with Inkland's dz80w (www.inkland.org)
+. Disassembled with Inkland's dz80w (http://www.inkland.org.uk/dz80/index.htm)
 . I wrote 6502 macros to replace the z80 opcodes
 . For cybernoid, I hand converted the z80 code to 6502 (using the
 macros)
