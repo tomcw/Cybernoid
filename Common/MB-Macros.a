@@ -239,16 +239,23 @@ AYPostProc:
 	; Attenuate AVOL
 
 	lda		.ay_regs_base+AY_AVOL
+	and		#AY_AMPLITUDE_MODE
+	bne		+				; don't attenuate if amp.mode=envelope
+	lda		.ay_regs_base+AY_AVOL
 	sec
 	sbc		nAttA
 	bpl		.ay_set_a_vol
 		lda		#0
 .ay_set_a_vol
 	sta		.ay0_regs+AY_AVOL
++
 
 	;
 	; Attenuate BVOL
 
+	lda		.ay_regs_base+AY_BVOL
+	and		#AY_AMPLITUDE_MODE
+	bne		+				; don't attenuate if amp.mode=envelope
 	lda		.ay_regs_base+AY_BVOL
 	sec
 	sbc		nAttB
@@ -257,10 +264,14 @@ AYPostProc:
 .ay_set_b_vol
 	sta		.ay0_regs+AY_BVOL
 	sta		.ay1_regs+AY_BVOL
++
 
 	;
 	; Attenuate CVOL
 
+	lda		.ay_regs_base+AY_CVOL
+	and		#AY_AMPLITUDE_MODE
+	bne		+				; don't attenuate if amp.mode=envelope
 	lda		.ay_regs_base+AY_CVOL
 	sec
 	sbc		nAttC
@@ -268,6 +279,7 @@ AYPostProc:
 		lda		#0
 .ay_set_c_vol
 	sta		.ay1_regs+AY_CVOL
++
 
 	;
 	; User disable A/B/C

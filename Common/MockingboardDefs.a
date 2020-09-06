@@ -29,6 +29,8 @@ AY_EFINE	= 11
 AY_ECOARSE	= 12
 AY_ESHAPE	= 13
 
+AY_AMPLITUDE_MODE = $10	; b4 of AY_xVOL (0=fixed, 1=envelope)
+
 AY_ENA_A	= %110110	; Enable A (Noise & Tone)
 AY_ENA_B	= %101101	; Enable B (Noise & Tone)
 AY_ENA_C	= %011011	; Enable C (Noise & Tone)
