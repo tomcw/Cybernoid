@@ -5,6 +5,8 @@
 !sl "Cybernoid.labels"
 *=$6000
 
+AY_UPDATE_OLD = 0
+
 ;------------------------------------------------------------------------------
 
 !source "..\Common\AppleDefs.a"
@@ -44,10 +46,19 @@ INIT:
 GotMBSlot:
 	stx		nMBBaseHi
 
+!if AY_UPDATE_OLD {
 	stx		MBx1+2
 	stx		MBx2+2
 	stx		MBx3+2
 	stx		MBx4+2
+} else {
+	stx		MB1+2
+	stx		MB2+2
+	stx		MB3+2
+	stx		MB4+2
+	stx		MB5+2
+	stx		MB6+2
+}
 	stx		MB7+2
 
 	;
@@ -232,7 +243,25 @@ MB7	sta		CARD_BASE+SY6522_IFR	; Clear Timer1 IRQ flag
 
 ;--------------------------------------
 
+!if AY_UPDATE_OLD {
 	+SF_UpdateAY
+} else {
+SF_SelectReg	; Select AY reg
+MB1		sta		CARD_BASE+SY6522_ORA
+		ldx		#AY_INACTIVE
+		lda		#AY_LATCH
+MB2		sta		CARD_BASE+SY6522_ORB
+MB3		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
+		rts
+
+SF_WriteReg		; Write AY reg
+MB4		sta		CARD_BASE+SY6522_ORA
+		ldx		#AY_INACTIVE
+		lda		#AY_WRITE
+MB5		sta		CARD_BASE+SY6522_ORB
+MB6		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
+		rts
+}
 
 ;--------------------------------------
 
@@ -710,4 +739,6 @@ AYData
 	!byte $69,$02,$00,$00,$00,$00,$01,$2C,$0B,$0A,$00,$00,$00,$00
 	!byte $68,$02,$00,$00,$00,$00,$01,$2C,$0A,$09,$00,$00,$00,$00
 	!byte $67,$02,$00,$00,$00,$00,$01,$2C,$09,$08,$00,$00,$00,$00
+	;
+	!byte $00,$00,$00,$00,$00,$00,$00,$3F,$00,$00,$00,$00,$00,$00 ; Set all channels off
 	!byte $ff,$ff
