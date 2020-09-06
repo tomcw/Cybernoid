@@ -58,6 +58,13 @@ GotMBSlot:
 	stx		MB4+2
 	stx		MB5+2
 	stx		MB6+2
+
+	stx		MB1x+2
+	stx		MB2x+2
+	stx		MB3x+2
+	stx		MB4x+2
+	stx		MB5x+2
+	stx		MB6x+2
 }
 	stx		MB7+2
 
@@ -198,12 +205,18 @@ Interrupt
 	lda		AYDataDoneFlag
 	bne		.done
 
-	ldx		#0
+	ldx		#AY_INACTIVE
 	ldy		#0
-.sf_loop0	tya
-			jsr		SF_SelectReg
-.smcAYData	lda		(pAYData),y
-			jsr		SF_WriteReg
+.sf_loop0
+MB1x		sty		CARD_BASE+SY6522_ORA
+			lda		#AY_LATCH
+MB2x		sta		CARD_BASE+SY6522_ORB
+MB3x		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
+			lda		(pAYData),y
+MB4x		sta		CARD_BASE+SY6522_ORA
+			lda		#AY_WRITE
+MB5x		sta		CARD_BASE+SY6522_ORB
+MB6x		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
 			iny
 			cpy		#$0E
 			bne		.sf_loop0
