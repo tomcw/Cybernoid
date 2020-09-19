@@ -15,6 +15,7 @@ AY_UPDATE_OLD = 0
 
 ;------------------------------------------------------------------------------
 
+pTonesTbl	= $fa
 TmpL    = $fc	; alias with pAYData
 pAYData = $fc
 MBBase	= $fe
@@ -26,6 +27,10 @@ MBBaseH	= MBBase+1
 ;--------------------------------------
 
 Entrypoint:
+	lda		pTonesTbl+0
+	sta		saveFA
+	lda		pTonesTbl+1
+	sta		saveFB
 	lda		pAYData+0
 	sta		saveFC
 	lda		pAYData+1
@@ -114,6 +119,7 @@ GotMBSlot:
 	sta		IRQH
 
 	jsr		InitAYData
+	jsr		InitTones
 
 	lda		#0
 	sta		AYDataDoneFlag
@@ -130,6 +136,10 @@ loop	lda		AYDataDoneFlag
 		bit		$c010
 		cmp		#27+$80		; ESC to quit
 		beq		done
+		jsr		TonesInc
+		bcs		loop
+		jsr		TonesDec
+		bcs		loop
 
 pause	; step via one-shot mode
 		sei
@@ -176,6 +186,10 @@ done
 	ldy		#SY6522_ORB+$80
 	sta		(MBBase),y
 
+	lda		saveFA
+	sta		pTonesTbl+0
+	lda		saveFB
+	sta		pTonesTbl+1
 	lda		saveFC
 	sta		pAYData+0
 	lda		saveFD
@@ -374,10 +388,319 @@ nMBBaseHi		!byte 0
 AYDataDoneFlag	!byte 0
 nFrameNum		!byte 0,0,0	; Minute:Second:FrameNum (@ 50Hz)
 
+saveFA			!byte 0
+saveFB			!byte 0
 saveFC			!byte 0
 saveFD			!byte 0
 saveFE			!byte 0
 saveFF			!byte 0
+
+;--------------------------------------
+
+SetTones
+	sei
+
+	; Even lines
+
+	jsr	InitAYData
+
+	lda	#<TonesTbl
+	sta	pTonesTbl+0
+	lda	#>TonesTbl
+	sta	pTonesTbl+1
+
+	ldy	#0		; TonesTbl index
+
+--		lda (pTonesTbl),y
+		sta smc1+1
+		iny
+		lda (pTonesTbl),y
+		sta smc2+1
+		iny
+		lda (pTonesTbl),y
+		tax		; count
+		iny
+		tya
+		pha		; TonesTbl index
+
+-			ldy #0
+smc1		lda	#$00
+			sta (pAYData),y
+			iny
+smc2		lda	#$00
+			sta (pAYData),y
+			clc
+			lda pAYData+0
+			adc #14*2		; alternate AY-reg sets
+			sta pAYData+0
+			lda pAYData+1
+			adc #0
+			sta pAYData+1
+			dex
+			bne -
+
+		pla
+		tay
+		lda (pTonesTbl),y
+		iny
+		and (pTonesTbl),y
+		dey
+		cmp	#$ff
+		bne --
+
+	; Odd lines
+
+	lda		#<(AYData+14)
+	sta		pAYData+0
+	lda		#>(AYData+14)
+	sta		pAYData+1
+
+	lda	#<TonesTblOdd
+	sta	pTonesTbl+0
+	lda	#>TonesTblOdd
+	sta	pTonesTbl+1
+
+	ldy	#0		; TonesTblOdd index
+
+--		lda (pTonesTbl),y
+		sta smc3+1
+		iny
+		lda (pTonesTbl),y
+		sta smc4+1
+		iny
+		lda (pTonesTbl),y
+		tax		; count
+		iny
+		tya
+		pha		; TonesTbl index
+
+-			ldy #0
+smc3		lda	#$00
+			sta (pAYData),y
+			iny
+smc4		lda	#$00
+			sta (pAYData),y
+			clc
+			lda pAYData+0
+			adc #14*2		; alternate AY-reg sets
+			sta pAYData+0
+			lda pAYData+1
+			adc #0
+			sta pAYData+1
+			dex
+			bne -
+
+		pla
+		tay
+		lda (pTonesTbl),y
+		iny
+		and (pTonesTbl),y
+		dey
+		cmp	#$ff
+		bne --
+
+
+	jsr	InitAYData
+	cli
+	rts
+
+;--------------------------------------
+
+PrintTones
+	lda TonesTbl+0*3+1
+	sta $400
+	lda TonesTbl+0*3+0
+	sta $401
+
+	lda #$A0
+	sta $402
+	sta $403
+
+	lda TonesTbl+1*3+1
+	sta $404
+	lda TonesTbl+1*3+0
+	sta $405
+
+	lda #$A0
+	sta $406
+	sta $407
+
+	lda TonesTbl+3*3+1
+	sta $408
+	lda TonesTbl+3*3+0
+	sta $409
+
+	lda #$A0
+	sta $40A
+	sta $40B
+
+	lda TonesTbl+4*3+1
+	sta $40C
+	lda TonesTbl+4*3+0
+	sta $40D
+
+	lda #$A0
+	sta $40E
+	sta $40F
+
+	lda TonesTbl+5*3+1
+	sta $410
+	lda TonesTbl+5*3+0
+	sta $411
+
+	lda #$A0
+	sta $412
+	sta $413
+
+	sec
+	rts
+
+;--------------------------------------
+
+TonesInc
+	ldy #0
+	cmp #'1'+$80
+	beq .inc
+	iny
+	cmp #'2'+$80
+	beq .inc
+	iny			; skip 'evens' end marker
+	iny
+	cmp #'3'+$80
+	beq .inc
+	iny
+	cmp #'4'+$80
+	beq .inc
+	iny
+	cmp #'5'+$80
+	beq .inc
+	clc
+	rts
+
+.inc
+	sty pTonesTbl
+	tya
+	asl		; =lsl
+	clc
+	adc pTonesTbl
+	tay				; y=y*3
+
+	lda	#<TonesTbl
+	sta	pTonesTbl+0
+	lda	#>TonesTbl
+	sta	pTonesTbl+1
+
+	clc
+	lda (pTonesTbl),y
+	adc #1
+	sta (pTonesTbl),y
+	iny
+	lda (pTonesTbl),y
+	adc #0
+	sta (pTonesTbl),y
+
+	jsr SetTones
+	jmp PrintTones
+
+;--------------------------------------
+
+TonesDec
+	ldy #0
+	cmp #'Q'+$80
+	beq .dec
+	iny
+	cmp #'W'+$80
+	beq .dec
+	iny			; skip 'evens' end marker
+	iny
+	cmp #'E'+$80
+	beq .dec
+	iny
+	cmp #'R'+$80
+	beq .dec
+	iny
+	cmp #'T'+$80
+	beq .dec
+	clc
+	rts
+
+.dec
+	sty pTonesTbl
+	tya
+	asl		; =lsl
+	clc
+	adc pTonesTbl
+	tay				; y=y*3
+
+	lda	#<TonesTbl
+	sta	pTonesTbl+0
+	lda	#>TonesTbl
+	sta	pTonesTbl+1
+
+	sec
+	lda (pTonesTbl),y
+	sbc #1
+	sta (pTonesTbl),y
+	iny
+	lda (pTonesTbl),y
+	sbc #0
+	sta (pTonesTbl),y
+
+	jsr SetTones
+	jmp PrintTones
+
+;--------------------------------------
+
+InitTones
+	ldy #0*3
+	lda	#$01
+	sta TonesTbl+0*3+1
+	lda #$e9
+	sta TonesTbl+0*3+0
+	;
+	lda	#$02
+	sta TonesTbl+1*3+1
+	lda #$68
+	sta TonesTbl+1*3+0
+	;
+	lda	#$00
+	sta TonesTbl+3*3+1
+	lda #$cd
+	sta TonesTbl+3*3+0
+	;
+	lda	#$00
+	sta TonesTbl+4*3+1
+	lda #$d9
+	sta TonesTbl+4*3+0
+	;
+	lda	#$00
+	sta TonesTbl+5*3+1
+	lda #$f4
+	sta TonesTbl+5*3+0
+	;
+	rts
+
+;--------------------------------------
+
+TonesTbl	; word freq, byte count
+	; even sets
+	!word $01e9
+	!byte 18
+	!word $0268
+	!byte 6
+	!word $ffff		; end
+	!byte $ff
+
+TonesTblOdd
+	; odd sets
+	!word $00cd
+	!byte 6
+	!word $00d9
+	!byte 12
+	!word $00f4
+	!byte 6
+	!word $ffff		; end
+	!byte $ff
 
 ;--------------------------------------
 
