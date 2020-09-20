@@ -1,6 +1,7 @@
 
 SPECTRUM128_STEREO = 1	; L = A+Bx0.5, R = C'+B'x0.5
 DUAL_MONO = 0			; L = A+B+C, R=A'+B'+C'
+USE_PHASOR = 1
 
 
 !macro MB_Init1 .RegSongNum {
@@ -18,7 +19,7 @@ nMaskB:		!byte 0		; Voice-B mask (0=enable)
 nMaskC:		!byte 0		; Voice-C mask (0=enable)
 ;
 nAttA:		!byte 0		; Attenuation of Voice-A
-nAttB:		!byte 1		; Attenuation of Voice-B : B Volume / 2 (logarithmic, so: if (A) A--)
+nAttB:		!byte 1		; Attenuation of Voice-B : B Volume / 2 (logarithmic, so: if (B) B--)
 nAttC:		!byte 0		; Attenuation of Voice-C
 ;
 pAYRegValues:	!word AYRegValues	; For VU-meter
@@ -43,7 +44,7 @@ SongNumOK:
 		; . Saving ZPBlock
 
 		lda		#1<<6
-MB0:	sta		CARD_BASE+SY6522_IER	; Disable Timer1 IRQ
+MB0:	sta		CARD_BASE+SY6522_IER+SY6522_A_PH_BASE	; Disable Timer1 IRQ
 
 FindMB:
 
@@ -89,22 +90,38 @@ GotMBSlot:
 
 	;
 
+!if USE_PHASOR {		; Phasor 2MHz mode
+	lda		MBBaseH
+	asl
+	asl
+	asl
+	asl								; slot * 16
+	clc
+	adc		#PH_PHASOR
+	tax
+	lda		$c080,x
+}
+
+!if USE_PHASOR {
+	lda		#$1f		; Phasor has 2 extra chip-select bits (b4:3)
+}else{
 	lda		#$07
-	ldy		#SY6522_DDRB
+}
+	ldy		#SY6522_DDRB+SY6522_A_PH_BASE
 	sta		(MBBase),y
-	ldy		#SY6522_DDRB+$80
+	ldy		#SY6522_DDRB+SY6522_B_BASE
 	sta		(MBBase),y
 
 	lda		#$ff
-	ldy		#SY6522_DDRA
+	ldy		#SY6522_DDRA+SY6522_A_PH_BASE
 	sta		(MBBase),y
-	ldy		#SY6522_DDRA+$80
+	ldy		#SY6522_DDRA+SY6522_B_BASE
 	sta		(MBBase),y
 
-	lda		#AY_RESET
-	ldy		#SY6522_ORB
+	lda		#AY_RESET	; Phasor chip-select b4:3=%00 (so select both AY's)
+	ldy		#SY6522_ORB+SY6522_A_PH_BASE
 	sta		(MBBase),y
-	ldy		#SY6522_ORB+$80
+	ldy		#SY6522_ORB+SY6522_B_BASE
 	sta		(MBBase),y
 
 	ldx		nSongNum
@@ -127,23 +144,23 @@ NotFini:
 	sta		nFrameNum+2
 
 	; Setup Timer1 IRQ to trigger at 50Hz
-	; Apple CLK = 1.022727 MHz, so set Timer1=0x4fe7
+	; Apple NTSC CLK = 1.022727 MHz, so set Timer1=0x4fe7
 
 	sei
 
 	lda		#$e7
-	ldy		#SY6522_TIMER1L_COUNTER
+	ldy		#SY6522_TIMER1L_COUNTER+SY6522_A_PH_BASE
 	sta		(MBBase),y
 	lda		#$4f
-	ldy		#SY6522_TIMER1H_COUNTER
+	ldy		#SY6522_TIMER1H_COUNTER+SY6522_A_PH_BASE
 	sta		(MBBase),y
 
 	lda		#1<<6
-	ldy		#SY6522_ACR
+	ldy		#SY6522_ACR+SY6522_A_PH_BASE
 	sta		(MBBase),y				; Free running timer
 
 	lda		#1<<7 | 1<<6
-	ldy		#SY6522_IER	
+	ldy		#SY6522_IER+SY6522_A_PH_BASE
 	sta		(MBBase),y				; Enable Timer1 IRQ
 
 	lda		#<Interrupt				; ADDR_L
@@ -162,26 +179,31 @@ InitExit2:
 
 ;--------------------------------------
 
-!macro SF_UpdateAY {
+!if USE_PHASOR {
+PHASOR_CS_MASK = %10000	; Phasor: b4=1 (don't select), b3=0 (select)
+} else {
+PHASOR_CS_MASK = 0
+}
 
 ; Skyfox's routine to update AY regs:
+!macro SF_UpdateAY {
 
 SF_SelectReg:
 MBx1:	sta		CARD_BASE+SY6522_ORA,x
-		lda		#AY_LATCH
+		lda		#AY_LATCH | PHASOR_CS_MASK
 		bne		.l675e
 
 SF_WriteReg:
 MBx2:	sta		CARD_BASE+SY6522_ORA,x
-		lda		#AY_WRITE
+		lda		#AY_WRITE | PHASOR_CS_MASK
 		bne		.l675e
 
 SF_ChipReset:
-		lda		#AY_RESET
+		lda		#AY_RESET | PHASOR_CS_MASK
 
 .l675e:
 MBx3:	sta		CARD_BASE+SY6522_ORB,x
-		lda		#AY_INACTIVE
+		lda		#AY_INACTIVE | PHASOR_CS_MASK
 MBx4:	sta		CARD_BASE+SY6522_ORB,x
 		rts
 }
@@ -238,9 +260,9 @@ AYPostProc:
 	;
 	; Attenuate AVOL
 
-	lda		.ay_regs_base+AY_AVOL
-	and		#AY_AMPLITUDE_MODE
-	bne		+				; don't attenuate if amp.mode=envelope
+;	lda		.ay_regs_base+AY_AVOL
+;	and		#AY_AMPLITUDE_MODE
+;	bne		+				; don't attenuate if amp.mode=envelope (Cybernoid doesn't use envelopes)
 	lda		.ay_regs_base+AY_AVOL
 	sec
 	sbc		nAttA
@@ -253,9 +275,9 @@ AYPostProc:
 	;
 	; Attenuate BVOL
 
-	lda		.ay_regs_base+AY_BVOL
-	and		#AY_AMPLITUDE_MODE
-	bne		+				; don't attenuate if amp.mode=envelope
+;	lda		.ay_regs_base+AY_BVOL
+;	and		#AY_AMPLITUDE_MODE
+;	bne		+				; don't attenuate if amp.mode=envelope (Cybernoid doesn't use envelopes)
 	lda		.ay_regs_base+AY_BVOL
 	sec
 	sbc		nAttB
@@ -269,9 +291,9 @@ AYPostProc:
 	;
 	; Attenuate CVOL
 
-	lda		.ay_regs_base+AY_CVOL
-	and		#AY_AMPLITUDE_MODE
-	bne		+				; don't attenuate if amp.mode=envelope
+;	lda		.ay_regs_base+AY_CVOL
+;	and		#AY_AMPLITUDE_MODE
+;	bne		+				; don't attenuate if amp.mode=envelope (Cybernoid doesn't use envelopes)
 	lda		.ay_regs_base+AY_CVOL
 	sec
 	sbc		nAttC
@@ -323,7 +345,7 @@ AYPostProc:
 
 	;
 
-	ldx		#0
+	ldx		#SY6522_A_PH_BASE		; Works for both MB & Phasor modes
 	ldy		#$0D
 .sf_loop0:	tya
 			jsr		SF_SelectReg
@@ -334,7 +356,7 @@ AYPostProc:
 
 	;
 
-	ldx		#$80
+	ldx		#SY6522_B_BASE
 	ldy		#$0D
 .sf_loop1:	tya
 			jsr		SF_SelectReg
@@ -385,24 +407,24 @@ AYPostProc:
 
 .ay_loop:
 		; Select AY reg
-MB1:	sty		CARD_BASE+SY6522_ORA
+MB1:	sty		CARD_BASE+SY6522_ORA+SY6522_A_PH_BASE
 MB1b:	sty		CARD_BASE+SY6522_ORA+$80
 		lda		#$07			; LATCH
-MB2:  	sta		CARD_BASE+SY6522_ORB
+MB2:  	sta		CARD_BASE+SY6522_ORB+SY6522_A_PH_BASE
 MB2b:  	sta		CARD_BASE+SY6522_ORB+$80
 		lda		#$04			; INACTIVE
-MB3:  	sta		CARD_BASE+SY6522_ORB
+MB3:  	sta		CARD_BASE+SY6522_ORB+SY6522_A_PH_BASE
 MB3b:  	sta		CARD_BASE+SY6522_ORB+$80
 
 		; Write AY reg
 		lda		(TmpL),y
-MB4:  	sta		CARD_BASE+SY6522_ORA
+MB4:  	sta		CARD_BASE+SY6522_ORA+SY6522_A_PH_BASE
 MB4b:  	sta		CARD_BASE+SY6522_ORA+$80
 		lda		#$06			; WRITE
-MB5:  	sta		CARD_BASE+SY6522_ORB
+MB5:  	sta		CARD_BASE+SY6522_ORB+SY6522_A_PH_BASE
 MB5b:  	sta		CARD_BASE+SY6522_ORB+$80
 		lda		#$04			; INACTIVE
-MB6:  	sta		CARD_BASE+SY6522_ORB
+MB6:  	sta		CARD_BASE+SY6522_ORB+SY6522_A_PH_BASE
 MB6b:  	sta		CARD_BASE+SY6522_ORB+$80
 
 		dey
@@ -440,7 +462,7 @@ MB6b:  	sta		CARD_BASE+SY6522_ORB+$80
 
 	lda		#1<<6
 MB7:
-	sta		CARD_BASE+SY6522_IFR	; Clear Timer1 IRQ flag
+	sta		CARD_BASE+SY6522_IFR+SY6522_A_PH_BASE	; Clear Timer1 IRQ flag
 
 	pla
 	tay

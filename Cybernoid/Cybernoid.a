@@ -415,7 +415,7 @@ lf0f3:		; Cmd_F0
 
 ;--------------------------------------
 
-lf492 = lf40a + ($f492-$f40a)
+lf492 = $28b2
 
 lf0f9:		; Cmd_E2
 ; Pseudo random number generator
@@ -459,7 +459,7 @@ lf0f9_SMC_h:
 lf111:		; Cmd_E3
 
 lf111_SMC:
-	lda		#$05
+	lda		#$2a
 	sta		RegA
 
 ;--------------------------------------
@@ -545,7 +545,7 @@ lf116:		; Cmd_00
 	bne		lf156
 
 	; ld      hl,(0f212h)
-	+LDW_INDIRECT	RegHL, lf1f6				; HL = A-freq
+	+LDW_INDIRECT	RegHL, lf212
 
 	; ld      (0f20ah),hl
 	+LDW_INDIRECT	lf20a, RegHL
@@ -734,7 +734,7 @@ lf1b1:
 	jsr		lf1c9
 
 	; ld      hl,0f1fch
-	+LDW	RegHL, lf1fc
+	+LDW	RegHL, lf1fc	; lf1fc = AYRegValues.NOISEPER
 
 	; ld      a,(hl)
 	+LD_REG_INDIRECT RegA, RegHL
@@ -758,13 +758,13 @@ lf1b1:
 	+RET_C
 
 	; inc     hl
-	+INCW	RegHL
+	+INCW	RegHL			; lf1fd = AYRegValues.ENABLE
 
 	; ld      a,(hl)
 	+LD_REG_INDIRECT RegA, RegHL
 
 	; or      38h
-	ora		#$38
+	ora		#$38			; ENABLE |= 0x38 (disable noise CBA)
 	sta		RegA
 
 	; ld      (hl),a
@@ -791,8 +791,15 @@ lf1c9:
 	; inc     (hl)
 	+INC_INDIRECT RegHL
 
+	lda		RegD		; $00nn?
+	bne		+
+		lda		#$f3	; 48K ROM $0000
+		sta		RegA
+		bne		++		; branch always
++
 	; ld      a,(de)
 	+LD_REG_INDIRECT	RegA, RegDE
+++
 
 	; sub     (hl)
 	+SUB_INDIRECT RegHL
@@ -813,8 +820,15 @@ lf1c9:
 	; inc     de
 	+INCW		RegDE
 
+	lda		RegD		; $00nn?
+	bne		+
+		lda		#$af	; 48K ROM $0001
+		sta		RegA
+		bne		++		; branch always
++
 	; ld      a,(de)
 	+LD_REG_INDIRECT	RegA, RegDE
+++
 
 	; ld      c,a
 	+LD		RegC, RegA
@@ -828,8 +842,15 @@ lf1c9:
 	; inc     (hl)
 	+INC_INDIRECT RegHL
 
+	lda		RegD		; $00nn?
+	bne		+
+		lda		#$11	; 48K ROM $0003
+		sta		RegA
+		bne		++		; branch always
++
 	; ld      a,(de)
 	+LD_REG_INDIRECT	RegA, RegDE
+++
 
 	; sub     (hl)
 	+SUB_INDIRECT	RegHL
@@ -902,11 +923,11 @@ SF_Detect:
 	ldx		#7
 
 .SlotNext:
-		ldy		#$00+SY6522_TIMER1L_COUNTER
+		ldy		#SY6522_TIMER1L_COUNTER+SY6522_A_PH_BASE
 		jsr		SF_GetTimerL
 		bne		.SlotLoop
 
-		ldy		#$80+SY6522_TIMER1L_COUNTER
+		ldy		#SY6522_TIMER1L_COUNTER+SY6522_B_BASE
 		jsr		SF_GetTimerL
 		beq		.SlotDone
 
@@ -961,63 +982,67 @@ SongTbl:	!byte 01	;  0: (AY: Title/In-game)
 
 ; AY regs [0..$D]
 AYRegValues:
-lf1f6:		!word 0		; A period
+lf1f6:		!word $01a8	; A period
 lf1f8:		!word 0		; B period
 lf1fa:		!word 0		; C period
-lf1fc:		!byte 0		; Noise period
-lf1fd:		!byte 0		; Enable
+lf1fc:		!byte $2f	; Noise period
+lf1fd:		!byte $3f	; Enable
 lf1fe:		!byte 0		; A volume
 lf1ff:		!byte 0		; B volume
 lf200:		!byte 0		; C volume
-lf201:		!word 0		; Envelope period
-lf203:		!byte 0		; Envelope shape
+lf201:		!word $0064	; Envelope period (not used)
+lf203:		!byte $0a	; Envelope shape  (not used)
 
 ;--------------------------------------
 
 lf204:		!word 0		; Tone period
-lf206:		!word 0
-			!word 0
+lf206:		!word $014a
+			!word $000a
 
 ;--------------------------------------
 
 lf20a:		!word 0
+			!word $0004
 			!word 0
-			!word 0
-			!word 0
+			!word $0012
 
 lf212:		!word 0
 
 ;--------------------------------------
 
+!macro MUSIC_DATA_ADDR .addr {
+	!word lf40a + (.addr - $f40a)
+}
+
 ; Voice-A struct
 
 lf214:		!byte 0
+			!byte 2
+			!byte 0
+			!byte 0
+			+MUSIC_DATA_ADDR $f41b
+			+MUSIC_DATA_ADDR $f471
 			!byte 0
 			!byte 0
 			!byte 0
-			!word 0
-			!word 0
 			!byte 0
-			!byte 0
-			!byte 0
-			!byte 0
-			!word 0
-			!word 0
+			+MUSIC_DATA_ADDR $f418
+			+MUSIC_DATA_ADDR $f471
 lf224:		!byte 0
-			!byte 0
-			!word 0
-			!word 0
-			!word 0
-			!byte 0
+			!byte $0a
+			+MUSIC_DATA_ADDR $f65e
+			+MUSIC_DATA_ADDR $f575
+			+MUSIC_DATA_ADDR $f56f
+			!byte 7
 			!byte 0
 			!byte $08	; 001000 - Disable A (Noise)
 			!byte $36	; 110110 - Enable A (Noise & Tone)
 			!word lf1fe	; &VolA
+			!byte $12
 			!byte 0
-			!byte 0
-			!byte 0
-			!byte 0
-			!byte 0
+			!byte $10
+			!byte $29
+			!byte 1
 
 ;--------------------------------------
 
@@ -1086,7 +1111,8 @@ lf26a:		!byte 0
 ;--------------------------------------
 
 ;lf27d:
-			!fill 17,0		; ?
+			!byte $2a
+			!fill 16,0		; ?
 
 ;--------------------------------------
 
@@ -1101,7 +1127,9 @@ lf28e:
 ; . Envelopes are not used, so no E-Periods to convert
 
 !macro ZX2MB .period {
-	!word .period*10227/17734
+;	!word .period*10227/17734	; Mockingboard 1MHz ((NTSC:14.3181818e6 / 14) / 100)
+	!word .period*20358/17734	; Phasor 2MHz ((PAL:14.25045e6 / 7) / 100)
+;	!word .period
 }
 
 	+ZX2MB $0000
