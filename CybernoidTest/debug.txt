@@ -1,3 +1,3 @@
 // PWD: <root>\AY-Z80\Cybernoid
 // run "debug.txt"
-bload "cybernoid",6000
+bload "cybernoid",4000
