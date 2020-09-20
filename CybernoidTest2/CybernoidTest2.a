@@ -68,6 +68,13 @@ GotMBSlot:
 	stx		MB4x+2
 	stx		MB5x+2
 	stx		MB6x+2
+
+	stx		MB7x+2
+	stx		MB8x+2
+	stx		MB9x+2
+	stx		MBAx+2
+	stx		MBBx+2
+	stx		MBCx+2
 }
 	stx		MB7+2
 
@@ -221,21 +228,38 @@ Interrupt
 ;;	lda		AYDataDoneFlag
 ;;	bne		.done
 
+	lda		pAYData+0
+	sta		MBsmc1+1
+	sta		MBsmc2+1
+	lda		pAYData+1
+	sta		MBsmc1+2
+	sta		MBsmc2+2
+
 	ldx		#AY_INACTIVE
-	ldy		#0
-.sf_loop0
+	ldy		#13								; write AY regs from $D to $0 (like Cybernoid)
+-
 MB1x		sty		CARD_BASE+SY6522_ORA
 			lda		#AY_LATCH
 MB2x		sta		CARD_BASE+SY6522_ORB
 MB3x		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
-			lda		(pAYData),y
+MBsmc1		lda		AYData,y
 MB4x		sta		CARD_BASE+SY6522_ORA
 			lda		#AY_WRITE
 MB5x		sta		CARD_BASE+SY6522_ORB
 MB6x		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
-			iny
-			cpy		#$0E
-			bne		.sf_loop0
+			dey
+			;
+MB7x		sty		CARD_BASE+SY6522_ORA
+			lda		#AY_LATCH
+MB8x		sta		CARD_BASE+SY6522_ORB
+MB9x		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
+MBsmc2		lda		AYData,y
+MBAx		sta		CARD_BASE+SY6522_ORA
+			lda		#AY_WRITE
+MBBx		sta		CARD_BASE+SY6522_ORB
+MBCx		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
+			dey
+			bpl		-
 
 	clc
 	lda		pAYData+0
