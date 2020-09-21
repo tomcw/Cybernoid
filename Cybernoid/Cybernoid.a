@@ -844,7 +844,7 @@ lf1c9:
 
 	lda		RegD		; $00nn?
 	bne		+
-		lda		#$11	; 48K ROM $0003
+		lda		#$11	; 48K ROM $0002
 		sta		RegA
 		bne		++		; branch always
 +
