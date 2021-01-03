@@ -5,8 +5,7 @@
 !sl "CybernoidTest2.labels"
 *=$4000
 
-AY_UPDATE_OLD = 0
-USE_AYDATA1 = 0
+USE_AYDATA1 = 1
 
 ;------------------------------------------------------------------------------
 
@@ -50,19 +49,6 @@ Entrypoint:
 GotMBSlot:
 	stx		nMBBaseHi
 
-!if AY_UPDATE_OLD {
-	stx		MBx1+2
-	stx		MBx2+2
-	stx		MBx3+2
-	stx		MBx4+2
-} else {
-	stx		MB1+2
-	stx		MB2+2
-	stx		MB3+2
-	stx		MB4+2
-	stx		MB5+2
-	stx		MB6+2
-
 	stx		MB1x+2
 	stx		MB2x+2
 	stx		MB3x+2
@@ -76,7 +62,7 @@ GotMBSlot:
 	stx		MBAx+2
 	stx		MBBx+2
 	stx		MBCx+2
-}
+
 	stx		MB7+2
 
 	;
@@ -144,7 +130,11 @@ loop	lda		AYDataDoneFlag
 		bit		$c010
 		cmp		#27+$80		; ESC to quit
 		beq		done
-		jsr		TonesInc
+		cmp		#9+$80		; TAB to toggle AY-chip
+		bne		+
+			jsr		toggle_ay
+			bcs		loop
++		jsr		TonesInc
 		bcs		loop
 		jsr		TonesDec
 		bcs		loop
@@ -298,28 +288,6 @@ MB7	sta		CARD_BASE+SY6522_IFR	; Clear Timer1 IRQ flag
 
 ;--------------------------------------
 
-!if AY_UPDATE_OLD {
-	+SF_UpdateAY
-} else {
-SF_SelectReg	; Select AY reg
-MB1		sta		CARD_BASE+SY6522_ORA
-		ldx		#AY_INACTIVE
-		lda		#AY_LATCH
-MB2		sta		CARD_BASE+SY6522_ORB
-MB3		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
-		rts
-
-SF_WriteReg		; Write AY reg
-MB4		sta		CARD_BASE+SY6522_ORA
-		ldx		#AY_INACTIVE
-		lda		#AY_WRITE
-MB5		sta		CARD_BASE+SY6522_ORB
-MB6		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
-		rts
-}
-
-;--------------------------------------
-
 lefe5:
 	inc		nFrameNum+2
 	lda		nFrameNum+2
@@ -410,6 +378,44 @@ InitAYData
 	lda		#>AYData2
 	sta		pAYData+1
 }
+	rts
+
+;--------------------------------------
+
+toggle_ay
+	sei
+
+	lda		#AY_RESET
+	ldy		#SY6522_ORB
+	sta		(MBBase),y
+	ldy		#SY6522_ORB+$80
+	sta		(MBBase),y
+
+	lda		MB1x+1	; ORA
+	eor		#$80
+	tax
+	lda		MB2x+1	; ORB
+	eor		#$80
+
+	stx		MB1x+1
+	sta		MB2x+1
+	sta		MB3x+1
+
+	stx		MB4x+1
+	sta		MB5x+1
+	sta		MB6x+1
+
+	stx		MB7x+1
+	sta		MB8x+1
+	sta		MB9x+1
+
+	stx		MBAx+1
+	sta		MBBx+1
+	sta		MBCx+1
+
+	cli
+
+	sec
 	rts
 
 ;------------------------------------------------------------------------------
