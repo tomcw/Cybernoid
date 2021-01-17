@@ -63,6 +63,16 @@ GotMBSlot:
 	stx		MBBx+2
 	stx		MBCx+2
 
+	stx		MB1y+2
+	stx		MB2y+2
+	stx		MB3y+2
+	stx		MB4y+2
+	stx		MB5y+2
+	stx		MB6y+2
+	stx		MB7y+2
+	stx		MB8y+2
+	stx		MB9y+2
+
 	stx		MB7+2
 
 	;
@@ -252,6 +262,61 @@ MBCx		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
 			dey
 			bpl		-
 
+	; Verify AY writes
+	lda		pAYData+0
+	sta		MBsmc3+1
+	sta		MBsmc4+1
+	lda		pAYData+1
+	sta		MBsmc3+2
+	sta		MBsmc4+2
+
+	ldx		#AY_INACTIVE
+	ldy		#13								; read AY regs from $D to $0
+
+-		lda		#$ff						; Port-A direction = output
+MB1y	sta		CARD_BASE+SY6522_DDRA
+MB2y	sty		CARD_BASE+SY6522_ORA		; AY reg to read
+
+		lda		#AY_LATCH
+MB3y	sta		CARD_BASE+SY6522_ORB
+MB4y	stx		CARD_BASE+SY6522_ORB
+
+		lda		#$00						; Port-A direction = input
+MB5y	sta		CARD_BASE+SY6522_DDRA
+
+		lda		#AY_READ
+MB6y	sta		CARD_BASE+SY6522_ORB
+MB7y	stx		CARD_BASE+SY6522_ORB
+
+MB8y	lda		CARD_BASE+SY6522_ORA		; and read it!
+MBsmc3	cmp		AYData1,y
+		beq		+
+			; ERR Reg:Val(read):Val(expect)
+			sty		$404
+			sta		$406
+MBsmc4		lda		AYData1,y
+			sta		$408
+			lda		#'E'+$80
+			sta		$400
+			lda		#'R'+$80
+			sta		$401
+			lda		#'R'+$80
+			sta		$402
+			lda		#' '+$80
+			sta		$403
+			lda		#':'+$80
+			sta		$405
+			lda		#':'+$80
+			sta		$407
+
++		dey
+		bpl		-
+
+	; And finally Port-A = output
+	lda		#$ff
+MB9y	sta		CARD_BASE+SY6522_DDRA
+
+	; Setup for next AY-reg set
 	clc
 	lda		pAYData+0
 	adc		#14
@@ -412,6 +477,26 @@ toggle_ay
 	stx		MBAx+1
 	sta		MBBx+1
 	sta		MBCx+1
+
+	;
+
+	lda		MB1y+1
+	eor		#$80
+	sta		MB1y+1
+	sta		MB5y+1
+	sta		MB9y+1
+
+	lda		MB2y+1
+	eor		#$80
+	sta		MB2y+1
+	sta		MB8y+1
+
+	lda		MB3y+1
+	eor		#$80
+	sta		MB3y+1
+	sta		MB4y+1
+	sta		MB6y+1
+	sta		MB7y+1
 
 	cli
 
