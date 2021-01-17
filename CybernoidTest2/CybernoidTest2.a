@@ -15,6 +15,7 @@ USE_AYDATA1 = 1
 
 ;------------------------------------------------------------------------------
 
+zpTmp	= $f9
 pTonesTbl	= $fa
 TmpL    = $fc	; alias with pAYData
 pAYData = $fc
@@ -27,6 +28,8 @@ MBBaseH	= MBBase+1
 ;--------------------------------------
 
 Entrypoint:
+	lda		zpTmp
+	sta		saveF9
 	lda		pTonesTbl+0
 	sta		saveFA
 	lda		pTonesTbl+1
@@ -194,6 +197,8 @@ done
 	ldy		#SY6522_ORB+$80
 	sta		(MBBase),y
 
+	lda		saveF9
+	sta		zpTmp
 	lda		saveFA
 	sta		pTonesTbl+0
 	lda		saveFB
@@ -255,6 +260,10 @@ MB7x		sty		CARD_BASE+SY6522_ORA
 MB8x		sta		CARD_BASE+SY6522_ORB
 MB9x		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
 MBsmc2		lda		AYData1,y
+			cpy		#AY_NOISEPER
+			bne		+
+				and		#AY_NOISE_MASK
++
 MBAx		sta		CARD_BASE+SY6522_ORA
 			lda		#AY_WRITE
 MBBx		sta		CARD_BASE+SY6522_ORB
@@ -265,10 +274,8 @@ MBCx		stx		CARD_BASE+SY6522_ORB	; Set INACTIVE
 	; Verify AY writes
 	lda		pAYData+0
 	sta		MBsmc3+1
-	sta		MBsmc4+1
 	lda		pAYData+1
 	sta		MBsmc3+2
-	sta		MBsmc4+2
 
 	ldx		#AY_INACTIVE
 	ldy		#13								; read AY regs from $D to $0
@@ -288,14 +295,19 @@ MB5y	sta		CARD_BASE+SY6522_DDRA
 MB6y	sta		CARD_BASE+SY6522_ORB
 MB7y	stx		CARD_BASE+SY6522_ORB
 
+MBsmc3	lda		AYData1,y
+		cpy		#AY_NOISEPER
+		bne		+
+			and		#AY_NOISE_MASK
++		sta		zpTmp
 MB8y	lda		CARD_BASE+SY6522_ORA		; and read it!
-MBsmc3	cmp		AYData1,y
+		cmp		zpTmp
 		beq		+
 			; ERR Reg:Val(read):Val(expect)
-			sty		$404
-			sta		$406
-MBsmc4		lda		AYData1,y
-			sta		$408
+			sty		$404		; reg#
+			sta		$406		; value read
+			lda		zpTmp
+			sta		$408		; value expected
 			lda		#'E'+$80
 			sta		$400
 			lda		#'R'+$80
@@ -511,6 +523,7 @@ nMBBaseHi		!byte 0
 AYDataDoneFlag	!byte 0
 nFrameNum		!byte 0,0,0	; Minute:Second:FrameNum (@ 50Hz)
 
+saveF9			!byte 0
 saveFA			!byte 0
 saveFB			!byte 0
 saveFC			!byte 0
