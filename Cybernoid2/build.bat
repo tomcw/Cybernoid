@@ -1,4 +1,6 @@
-D:\Apple][\acme085\acme.exe cybernoid2.a
-D:\Apple][\InsertBIN2AWS\debug\InsertBIN2AWS.exe cybernoid2 6000 cybernoid2.aws
-java -jar "D:\Apple][\Apple Commander\ac\AppleCommander-1.3.3.9-ac.jar" -d cybernoid2 ..\ReleaseDSK\Cybernoid.dsk
-cat cybernoid2 | java -jar "D:\Apple][\Apple Commander\ac\AppleCommander-1.3.3.9-ac.jar" -p Cybernoid2 bin 24576 ..\ReleaseDSK\Cybernoid.dsk
+acme.exe -DUSE_PHASOR=1 cybernoid2.a
+@REM copy cybernoid2.labels %APPLEWIN_DBG%\A2_USER1.sym
+move /y CYBERNOID2 CYBERNOID2.PH
+
+acme.exe -DUSE_PHASOR=0 cybernoid2.a
+copy cybernoid2.labels %APPLEWIN_DBG%\A2_USER1.sym

@@ -179,7 +179,7 @@ InitExit2:
 ;--------------------------------------
 
 !if USE_PHASOR {
-PHASOR_CS_MASK = AY_CS2	; Phasor: b4=1 (don't select), b3=0 (select)
+PHASOR_CS_MASK = AY_CS1	; Phasor: b4=0 (select), b3=1 (not select)
 } else {
 PHASOR_CS_MASK = 0
 }
