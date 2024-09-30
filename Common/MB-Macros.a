@@ -1,7 +1,6 @@
 
 SPECTRUM128_STEREO = 1	; L = A+Bx0.5, R = C'+B'x0.5
 DUAL_MONO = 0			; L = A+B+C, R=A'+B'+C'
-USE_PHASOR = 1
 
 
 !macro MB_Init1 .RegSongNum {
@@ -180,7 +179,7 @@ InitExit2:
 ;--------------------------------------
 
 !if USE_PHASOR {
-PHASOR_CS_MASK = %10000	; Phasor: b4=1 (don't select), b3=0 (select)
+PHASOR_CS_MASK = AY_CS2	; Phasor: b4=1 (don't select), b3=0 (select)
 } else {
 PHASOR_CS_MASK = 0
 }

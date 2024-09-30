@@ -1,17 +1,19 @@
-;ACME 0.85
+;ACME 0.97
 
 !cpu 6502	; Compatible with all Apple2's
-!to "Cybernoid", plain
+!to "CYBERNOID", plain
 !sl "Cybernoid.labels"
 *=$6000
 
 ;------------------------------------------------------------------------------
 
-!source "..\Common\Z80-Macros.a"
-!source "..\Common\ZP-Macros.a"
-!source "..\Common\AppleDefs.a"
-!source "..\Common\MockingboardDefs.a"
-!source "..\Common\MB-Macros.a"
+;USE_PHASOR = 0	; defined on command line
+
+!source "..\\Common\\Z80-Macros.a"
+!source "..\\Common\\ZP-Macros.a"
+!source "..\\Common\\AppleDefs.a"
+!source "..\\Common\\MockingboardDefs.a"
+!source "..\\Common\\MB-Macros.a"
 
 ;------------------------------------------------------------------------------
 
@@ -1127,8 +1129,11 @@ lf28e:
 ; . Envelopes are not used, so no E-Periods to convert
 
 !macro ZX2MB .period {
-;	!word .period*10227/17734	; Mockingboard 1MHz ((NTSC:14.3181818e6 / 14) / 100)
+!if USE_PHASOR {
 	!word .period*20358/17734	; Phasor 2MHz ((PAL:14.25045e6 / 7) / 100)
+}else{
+	!word .period*10227/17734	; Mockingboard 1MHz ((NTSC:14.3181818e6 / 14) / 100)
+}
 ;	!word .period
 }
 
